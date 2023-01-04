@@ -50,9 +50,6 @@ Min level: 1
 Max level: 30
 Weight: 3
 
-<<<<<<< HEAD
-Name: L1_Furippa1_128x64
-=======
 Name: PaxGod_TikTok_Marketing
 Min butthurt: 0
 Max butthurt: 14
@@ -61,7 +58,6 @@ Max level: 30
 Weight: 3
 
 Name: lvl_16
->>>>>>> 40454bfed66f9557e58781ac236327c37caba5a9
 Min butthurt: 0
 Max butthurt: 6
 Min level: 1
