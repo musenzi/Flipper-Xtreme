@@ -3,33 +3,40 @@
 #include <gui/gui.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/empty_screen.h>
-#include <gui/elements.h>
 #include <assets_icons.h>
 #include <furi_hal_version.h>
 #include <furi_hal_region.h>
 #include <furi_hal_bt.h>
-#include <power/power_service/power.h>
 
 int screen_index;
-
-#define LOW_CHARGE_THRESHOLD 10
-#define HIGH_DRAIN_CURRENT_THRESHOLD 100
 
 typedef DialogMessageButton (*AboutDialogScreen)(DialogsApp* dialogs, DialogMessage* message);
 
 static DialogMessageButton product_screen(DialogsApp* dialogs, DialogMessage* message) {
     DialogMessageButton result;
 
-    const char* screen_header = "Product: Flipper Zero\n"
-                                "Model: FZ.1\n";
-    const char* screen_text = "FCC ID: 2A2V6-FZ\n"
-                              "IC: 27624-FZ";
+    FuriString* screen_header = furi_string_alloc_printf(
+        "Product: %s\n"
+        "Model: %s",
+        furi_hal_version_get_model_name(),
+        furi_hal_version_get_model_code());
 
-    dialog_message_set_header(message, screen_header, 0, 0, AlignLeft, AlignTop);
-    dialog_message_set_text(message, screen_text, 0, 26, AlignLeft, AlignTop);
+    FuriString* screen_text = furi_string_alloc_printf(
+        "FCC ID: %s\n"
+        "IC: %s",
+        furi_hal_version_get_fcc_id(),
+        furi_hal_version_get_ic_id());
+
+    dialog_message_set_header(
+        message, furi_string_get_cstr(screen_header), 0, 0, AlignLeft, AlignTop);
+    dialog_message_set_text(
+        message, furi_string_get_cstr(screen_text), 0, 26, AlignLeft, AlignTop);
     result = dialog_message_show(dialogs, message);
     dialog_message_set_header(message, NULL, 0, 0, AlignLeft, AlignTop);
     dialog_message_set_text(message, NULL, 0, 0, AlignLeft, AlignTop);
+
+    furi_string_free(screen_header);
+    furi_string_free(screen_text);
 
     return result;
 }
@@ -96,7 +103,7 @@ static DialogMessageButton hw_version_screen(DialogsApp* dialogs, DialogMessage*
         furi_hal_version_get_hw_target(),
         furi_hal_version_get_hw_body(),
         furi_hal_version_get_hw_connect(),
-        furi_hal_version_get_hw_region_name(),
+        furi_hal_version_get_hw_region_name_otp(),
         furi_hal_region_get_name(),
         my_name ? my_name : "Unknown");
 
@@ -158,6 +165,13 @@ static DialogMessageButton fw_version_screen(DialogsApp* dialogs, DialogMessage*
     return result;
 }
 
+#include <gui/elements.h>
+#include <locale/locale.h>
+#include <power/power_service/power.h>
+
+#define LOW_CHARGE_THRESHOLD 10
+#define HIGH_DRAIN_CURRENT_THRESHOLD 100
+
 static void draw_stat(Canvas* canvas, int x, int y, const Icon* icon, char* val) {
     canvas_draw_frame(canvas, x - 7, y + 7, 30, 13);
     canvas_draw_icon(canvas, x, y, icon);
@@ -209,22 +223,22 @@ static void draw_battery(Canvas* canvas, PowerInfo* info, int x, int y) {
             drain_current > HIGH_DRAIN_CURRENT_THRESHOLD ? "mA!" : "mA");
     } else if(drain_current != 0) {
         snprintf(header, 20, "...");
-    } else if(info->voltage_battery_charging < 4.2) {
+    } else if(info->voltage_battery_charge_limit < 4.2) {
         // Non-default battery charging limit, mention it
         snprintf(header, sizeof(header), "Limited to");
         snprintf(
             value,
             sizeof(value),
             "%lu.%luV",
-            (uint32_t)(info->voltage_battery_charging),
-            (uint32_t)(info->voltage_battery_charging * 10) % 10);
+            (uint32_t)(info->voltage_battery_charge_limit),
+            (uint32_t)(info->voltage_battery_charge_limit * 10) % 10);
     } else {
         snprintf(header, sizeof(header), "Charged!");
     }
 
-    if (!strcmp(value, "")) {
+    if(!strcmp(value, "")) {
         canvas_draw_str_aligned(canvas, x + 92, y + 14, AlignCenter, AlignCenter, header);
-    } else if (!strcmp(header, "")) {
+    } else if(!strcmp(header, "")) {
         canvas_draw_str_aligned(canvas, x + 92, y + 14, AlignCenter, AlignCenter, value);
     } else {
         canvas_draw_str_aligned(canvas, x + 92, y + 9, AlignCenter, AlignCenter, header);
@@ -246,7 +260,15 @@ static void battery_info_draw_callback(Canvas* canvas, void* context) {
     char health[10];
 
     snprintf(batt_level, sizeof(batt_level), "%lu%%", (uint32_t)info->charge);
-    snprintf(temperature, sizeof(temperature), "%lu C", (uint32_t)info->temperature_gauge);
+    if(locale_get_measurement_unit() == LocaleMeasurementUnitsMetric) {
+        snprintf(temperature, sizeof(temperature), "%lu C", (uint32_t)info->temperature_gauge);
+    } else {
+        snprintf(
+            temperature,
+            sizeof(temperature),
+            "%lu F",
+            (uint32_t)locale_celsius_to_fahrenheit(info->temperature_gauge));
+    }
     snprintf(
         voltage,
         sizeof(voltage),
@@ -298,7 +320,6 @@ const AboutDialogScreen about_screens[] = {
 
 const int about_screens_count = sizeof(about_screens) / sizeof(AboutDialogScreen);
 
-
 int32_t about_settings_app(void* p) {
     bool battery_info = false;
     if(p && strlen(p) && !strcmp(p, "batt")) {
@@ -324,24 +345,19 @@ int32_t about_settings_app(void* p) {
     DialogMessageButton screen_result;
 
     // draw empty screen to prevent menu flickering
-    view_dispatcher_add_view(
-        view_dispatcher, battery_info_index, battery_view);
+    view_dispatcher_add_view(view_dispatcher, battery_info_index, battery_view);
     view_dispatcher_add_view(
         view_dispatcher, empty_screen_index, empty_screen_get_view(empty_screen));
     view_dispatcher_attach_to_gui(view_dispatcher, gui, ViewDispatcherTypeFullscreen);
 
     screen_index = -1 + !battery_info;
     while(screen_index > -2) {
-
-        if (screen_index == -1) {
-            if (!battery_info) {
+        if(screen_index == -1) {
+            if(!battery_info) {
                 break;
             }
             with_view_model(
-                battery_view,
-                PowerInfo * model,
-                { power_get_info(power, model); },
-                true);
+                battery_view, PowerInfo * model, { power_get_info(power, model); }, true);
             view_dispatcher_switch_to_view(view_dispatcher, battery_info_index);
             furi_semaphore_acquire(semaphore, 2000);
         } else {
@@ -360,7 +376,6 @@ int32_t about_settings_app(void* p) {
                 screen_index = -2;
             }
         }
-
     }
 
     dialog_message_free(message);

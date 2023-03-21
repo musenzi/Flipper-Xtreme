@@ -17,7 +17,8 @@ extern "C" {
 #define FURI_HAL_VERSION_NAME_LENGTH 8
 #define FURI_HAL_VERSION_ARRAY_NAME_LENGTH (FURI_HAL_VERSION_NAME_LENGTH + 1)
 /** BLE symbol + name */
-#define FURI_HAL_VERSION_DEVICE_NAME_LENGTH (1 + FURI_HAL_VERSION_ARRAY_NAME_LENGTH)
+#define FURI_HAL_VERSION_DEVICE_NAME_LENGTH \
+    (1 + FURI_HAL_VERSION_ARRAY_NAME_LENGTH) + 9 // for bad kb custom name
 
 /** OTP Versions enum */
 typedef enum {
@@ -67,6 +68,24 @@ bool furi_hal_version_do_i_belong_here();
  */
 const char* furi_hal_version_get_model_name();
 
+/** Get model name
+ *
+ * @return     model code C-string
+ */
+const char* furi_hal_version_get_model_code();
+
+/** Get FCC ID
+ *
+ * @return     FCC id as C-string
+ */
+const char* furi_hal_version_get_fcc_id();
+
+/** Get IC id
+ *
+ * @return     IC id as C-string
+ */
+const char* furi_hal_version_get_ic_id();
+
 /** Get OTP version
  *
  * @return     OTP Version
@@ -103,17 +122,29 @@ FuriHalVersionColor furi_hal_version_get_hw_color();
  */
 uint8_t furi_hal_version_get_hw_connect();
 
-/** Get hardware region
+/** Get hardware region (fake) = 0
  *
- * @return     Hardware Region
+ * @return     Hardware Region (fake)
  */
 FuriHalVersionRegion furi_hal_version_get_hw_region();
 
-/** Get hardware region name
+/** Get hardware region name (fake) = R00
+ *
+ * @return     Hardware Region name (fake)
+ */
+const char* furi_hal_version_get_hw_region_name();
+
+/** Get hardware region (OTP)
+ *
+ * @return     Hardware Region
+ */
+FuriHalVersionRegion furi_hal_version_get_hw_region_otp();
+
+/** Get hardware region name (OTP)
  *
  * @return     Hardware Region name
  */
-const char* furi_hal_version_get_hw_region_name();
+const char* furi_hal_version_get_hw_region_name_otp();
 
 /** Get hardware display id
  *

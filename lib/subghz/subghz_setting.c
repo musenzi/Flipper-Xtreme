@@ -3,13 +3,9 @@
 //#include "subghz_i.h"
 
 #include <furi.h>
-#include <m-list.h>
 #include <furi_hal_subghz_configs.h>
 
 #define TAG "SubGhzSetting"
-
-#define SUBGHZ_SETTING_FILE_TYPE "Flipper SubGhz Setting File"
-#define SUBGHZ_SETTING_FILE_VERSION 1
 
 #define FREQUENCY_FLAG_DEFAULT (1 << 31)
 #define FREQUENCY_MASK (0xFFFFFFFF ^ FREQUENCY_FLAG_DEFAULT)
@@ -39,6 +35,7 @@ static const uint32_t subghz_frequency_list[] = {
     330000000,
     345000000,
     348000000,
+    350000000,
 
     /* 387 - 464 */
     387000000,
@@ -60,6 +57,7 @@ static const uint32_t subghz_frequency_list[] = {
     438900000,
     440175000,
     464000000,
+    467750000,
 
     /* 779 - 928 */
     779000000,
@@ -75,10 +73,10 @@ static const uint32_t subghz_frequency_list[] = {
 };
 
 static const uint32_t subghz_hopper_frequency_list[] = {
-    310000000,
     315000000,
-    318000000,
+    330000000,
     390000000,
+    433420000,
     433920000,
     868350000,
     0,
@@ -94,10 +92,6 @@ ARRAY_DEF(SubGhzSettingCustomPresetItemArray, SubGhzSettingCustomPresetItem, M_P
 
 #define M_OPL_SubGhzSettingCustomPresetItemArray_t() \
     ARRAY_OPLIST(SubGhzSettingCustomPresetItemArray, M_POD_OPLIST)
-
-LIST_DEF(FrequencyList, uint32_t)
-
-#define M_OPL_FrequencyList_t() LIST_OPLIST(FrequencyList)
 
 typedef struct {
     SubGhzSettingCustomPresetItemArray_t data;

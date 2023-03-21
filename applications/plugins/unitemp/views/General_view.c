@@ -1,6 +1,6 @@
 /*
     Unitemp - Universal temperature reader
-    Copyright (C) 2022  Victor Nikitchuk (https://github.com/quen0n)
+    Copyright (C) 2022-2023  Victor Nikitchuk (https://github.com/quen0n)
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,7 +18,9 @@
 #include "UnitempViews.h"
 #include "unitemp_icons.h"
 
-#include <assets_icons.h>
+extern const Icon I_ButtonRight_4x7;
+extern const Icon I_ButtonLeft_4x7;
+extern const Icon I_Ok_btn_9x9;
 
 static View* view;
 
@@ -74,7 +76,7 @@ static void _draw_temperature(Canvas* canvas, Sensor* sensor, uint8_t x, uint8_t
         app->buff[0] = '-';
         offset = 1;
     }
-    snprintf((char*)(app->buff + offset), BUFF_SIZE, "%d", (int8_t)sensor->temp);
+    snprintf((char*)(app->buff + offset), BUFF_SIZE, "%d", (int16_t)sensor->temp);
     canvas_set_font(canvas, FontBigNumbers);
     canvas_draw_str_aligned(
         canvas,
@@ -114,14 +116,20 @@ static void _draw_humidity(Canvas* canvas, Sensor* sensor, const uint8_t pos[2])
 static void _draw_pressure(Canvas* canvas, Sensor* sensor) {
     const uint8_t x = 29, y = 39;
     //Рисование рамки
-    canvas_draw_rframe(canvas, x, y, 69, 20, 3);
-    canvas_draw_rframe(canvas, x, y, 69, 19, 3);
+    if(app->settings.pressure_unit == UT_PRESSURE_HPA) {
+        canvas_draw_rframe(canvas, x, y, 84, 20, 3);
+        canvas_draw_rframe(canvas, x, y, 84, 19, 3);
+    } else {
+        canvas_draw_rframe(canvas, x, y, 69, 20, 3);
+        canvas_draw_rframe(canvas, x, y, 69, 19, 3);
+    }
 
     //Рисование иконки
     canvas_draw_icon(canvas, x + 3, y + 4, &I_pressure_7x13);
 
     int16_t press_int = sensor->pressure;
-    int8_t press_dec = (int16_t)(sensor->temp * 10) % 10;
+    // Change Temp for Pressure
+    int8_t press_dec = (int16_t)(sensor->pressure * 10) % 10;
 
     //Целая часть давления
     snprintf(app->buff, BUFF_SIZE, "%d", press_int);
@@ -134,15 +142,23 @@ static void _draw_pressure(Canvas* canvas, Sensor* sensor) {
         snprintf(app->buff, BUFF_SIZE, ".%d", press_dec);
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, x + 27 + int_len / 2 + 2, y + 10 + 7, app->buff);
+    } else if(app->settings.pressure_unit == UT_PRESSURE_HPA) {
+        uint8_t int_len = canvas_string_width(canvas, app->buff);
+        snprintf(app->buff, BUFF_SIZE, ".%d", press_dec);
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, x + 32 + int_len / 2 + 2, y + 10 + 7, app->buff);
     }
     canvas_set_font(canvas, FontSecondary);
     //Единица измерения
+
     if(app->settings.pressure_unit == UT_PRESSURE_MM_HG) {
         canvas_draw_icon(canvas, x + 50, y + 2, &I_mm_hg_15x15);
     } else if(app->settings.pressure_unit == UT_PRESSURE_IN_HG) {
         canvas_draw_icon(canvas, x + 50, y + 2, &I_in_hg_15x15);
     } else if(app->settings.pressure_unit == UT_PRESSURE_KPA) {
         canvas_draw_str(canvas, x + 52, y + 13, "kPa");
+    } else if(app->settings.pressure_unit == UT_PRESSURE_HPA) {
+        canvas_draw_str(canvas, x + 67, y + 13, "hPa");
     }
 }
 
@@ -235,6 +251,7 @@ static void _draw_carousel_values(Canvas* canvas) {
         canvas_draw_icon(canvas, 34, 23, frames[furi_get_tick() % 2250 / 750]);
 
         canvas_set_font(canvas, FontSecondary);
+        //TODO: Оптимизировать эту срань
         if(unitemp_sensor_getActive(generalview_sensor_index)->type->interface == &SINGLE_WIRE) {
             snprintf(
                 app->buff,
@@ -253,6 +270,9 @@ static void _draw_carousel_values(Canvas* canvas) {
         }
         if(unitemp_sensor_getActive(generalview_sensor_index)->type->interface == &I2C) {
             snprintf(app->buff, BUFF_SIZE, "Waiting for module on I2C pins");
+        }
+        if(unitemp_sensor_getActive(generalview_sensor_index)->type->interface == &SPI) {
+            snprintf(app->buff, BUFF_SIZE, "Waiting for module on SPI pins");
         }
         canvas_draw_str_aligned(canvas, 64, 19, AlignCenter, AlignCenter, app->buff);
         return;
@@ -302,6 +322,8 @@ static void _draw_carousel_values(Canvas* canvas) {
         break;
     }
 }
+
+//TODO: Оптимизировать вывод информации
 static void _draw_carousel_info(Canvas* canvas) {
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str(canvas, 10, 23, "Type:");
@@ -349,6 +371,25 @@ static void _draw_carousel_info(Canvas* canvas) {
                 ->gpio->name);
     }
 
+    if(unitemp_sensor_getActive(generalview_sensor_index)->type->interface == &SPI) {
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 10, 35, "MISO pin:");
+        canvas_draw_str(canvas, 10, 46, "CS pin:");
+        canvas_draw_str(canvas, 10, 58, "SCK pin:");
+
+        canvas_set_font(canvas, FontSecondary);
+        canvas_draw_str(
+            canvas, 41, 23, unitemp_sensor_getActive(generalview_sensor_index)->type->typename);
+        canvas_draw_str(canvas, 60, 35, unitemp_gpio_getFromInt(3)->name);
+        canvas_draw_str(
+            canvas,
+            47,
+            46,
+            ((SPISensor*)unitemp_sensor_getActive(generalview_sensor_index)->instance)
+                ->CS_pin->name);
+        canvas_draw_str(canvas, 54, 58, unitemp_gpio_getFromInt(5)->name);
+    }
+
     if(unitemp_sensor_getActive(generalview_sensor_index)->type->interface == &I2C) {
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 10, 35, "I2C addr:");
@@ -362,7 +403,8 @@ static void _draw_carousel_info(Canvas* canvas) {
             BUFF_SIZE,
             "0x%02X",
             ((I2CSensor*)unitemp_sensor_getActive(generalview_sensor_index)->instance)
-                ->currentI2CAdr);
+                    ->currentI2CAdr >>
+                1);
         canvas_draw_str(canvas, 57, 35, app->buff);
         canvas_draw_str(canvas, 54, 46, "15 (C0)");
         canvas_draw_str(canvas, 54, 58, "16 (C1)");
@@ -539,6 +581,10 @@ static bool _input_callback(InputEvent* event, void* context) {
             return true;
         }
     }
+    //Обработка длинного нажатия "Ок"
+    if(event->key == InputKeyOk && event->type == InputTypeLong) {
+        app->settings.temp_unit = !app->settings.temp_unit;
+    }
 
     return true;
 }
@@ -558,5 +604,6 @@ void unitemp_General_switch(void) {
 }
 
 void unitemp_General_free(void) {
+    view_dispatcher_remove_view(app->view_dispatcher, UnitempViewGeneral);
     view_free(view);
 }

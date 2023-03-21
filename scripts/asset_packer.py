@@ -6,7 +6,9 @@ import shutil
 import struct
 import typing
 import time
+import re
 import io
+import os
 
 
 def convert_bm(img: "Image.Image | pathlib.Path") -> bytes:
@@ -28,7 +30,7 @@ def convert_bm(img: "Image.Image | pathlib.Path") -> bytes:
     data_enc = bytearray(data_encoded_str)
     data_enc = bytearray([len(data_enc) & 0xFF, len(data_enc) >> 8]) + data_enc
 
-    if len(data_enc) < len(data_bin) + 1:
+    if len(data_enc) + 2 < len(data_bin) + 1:
         return b"\x01\x00" + data_enc
     else:
         return b"\x00" + data_bin
@@ -43,17 +45,58 @@ def convert_bmx(img: "Image.Image | pathlib.Path") -> bytes:
     return data
 
 
-def pack(input: "str | pathlib.Path", output: "str | pathlib.Path", logger: typing.Callable):
+def pack_anim(src: pathlib.Path, dst: pathlib.Path):
+    if not (src / "meta.txt").is_file():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for frame in src.iterdir():
+        if not frame.is_file():
+            continue
+        if frame.name == "meta.txt":
+            shutil.copyfile(src / "meta.txt", dst / "meta.txt")
+            continue
+        elif frame.name.startswith("frame_"):
+            (dst / frame.with_suffix(".bm").name).write_bytes(convert_bm(frame))
+
+
+def pack_icon_animated(src: pathlib.Path, dst: pathlib.Path):
+    if not (src / "frame_rate").is_file():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    frame_count = 0
+    frame_rate = None
+    size = None
+    for frame in src.iterdir():
+        if not frame.is_file():
+            continue
+        if frame.name == "frame_rate":
+            frame_rate = int((src / "frame_rate").read_text())
+            continue
+        elif frame.name.startswith("frame_"):
+            frame_count += 1
+            if not size:
+                size = Image.open(frame).size
+            (dst / frame.with_suffix(".bm").name).write_bytes(convert_bm(frame))
+    (dst / "meta").write_bytes(struct.pack("<IIII", *size, frame_rate, frame_count))
+
+
+def pack_icon_static(src: pathlib.Path, dst: pathlib.Path):
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.with_suffix(".bmx").write_bytes(convert_bmx(src))
+
+
+def pack(
+    input: "str | pathlib.Path", output: "str | pathlib.Path", logger: typing.Callable
+):
     input = pathlib.Path(input)
     output = pathlib.Path(output)
-    output.mkdir(parents=True, exist_ok=True)
     for source in input.iterdir():
         if source == output:
             continue
         if not source.is_dir():
             continue
 
-        logger(f"Packing {source.name}... ")
+        logger(f"Pack: custom user pack '{source.name}'")
         packed = output / source.name
         if packed.exists():
             try:
@@ -64,32 +107,36 @@ def pack(input: "str | pathlib.Path", output: "str | pathlib.Path", logger: typi
             except Exception:
                 pass
 
-        packed.mkdir(parents=True, exist_ok=True)
-
         if (source / "Anims/manifest.txt").exists():
             (packed / "Anims").mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source / "Anims/manifest.txt", packed / "Anims/manifest.txt")
-            for anim in (source / "Anims").iterdir():
-                if not anim.is_dir():
-                    continue
-                (packed / "Anims" / anim.name).mkdir(parents=True, exist_ok=True)
-                for frame in anim.iterdir():
-                    if not frame.is_file():
-                        continue
-                    if frame.name == "meta.txt":
-                        shutil.copyfile(frame, packed / "Anims" / anim.name / "meta.txt")
-                    elif frame.name.startswith("frame_"):
-                        (packed / "Anims" / anim.name / frame.with_suffix(".bm").name).write_bytes(convert_bm(frame))
+            shutil.copyfile(
+                source / "Anims/manifest.txt", packed / "Anims/manifest.txt"
+            )
+            manifest = (source / "Anims/manifest.txt").read_bytes()
+            for anim in re.finditer(rb"Name: (.*)", manifest):
+                anim = anim.group(1).decode().replace("\\", "/").replace("/", os.sep)
+                logger(f"Compile: anim for pack '{source.name}': {anim}")
+                pack_anim(source / "Anims" / anim, packed / "Anims" / anim)
 
         if (source / "Icons").is_dir():
             for icons in (source / "Icons").iterdir():
                 if not icons.is_dir():
                     continue
-                (packed / "Icons" / icons.name).mkdir(parents=True, exist_ok=True)
                 for icon in icons.iterdir():
-                    if not icon.is_file():
-                        continue
-                    (packed / "Icons" / icons.name / icon.with_suffix(".bmx").name).write_bytes(convert_bmx(icon))
+                    if icon.is_dir():
+                        logger(
+                            f"Compile: icon for pack '{source.name}': {icons.name}/{icon.name}"
+                        )
+                        pack_icon_animated(
+                            icon, packed / "Icons" / icons.name / icon.name
+                        )
+                    elif icon.is_file():
+                        logger(
+                            f"Compile: icon for pack '{source.name}': {icons.name}/{icon.name}"
+                        )
+                        pack_icon_static(
+                            icon, packed / "Icons" / icons.name / icon.name
+                        )
 
 
 if __name__ == "__main__":
@@ -105,7 +152,4 @@ if __name__ == "__main__":
     pack(here, here / "dolphin_custom", logger=print)
 
     end = time.perf_counter()
-    input(
-        f"\nFinished in {round(end - start, 2)}s\n"
-        "Press [Enter] to exit"
-    )
+    input(f"\nFinished in {round(end - start, 2)}s\n" "Press [Enter] to exit")

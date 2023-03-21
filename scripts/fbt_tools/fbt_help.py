@@ -11,7 +11,7 @@ Building:
         Build all FAP apps
     fap_{APPID}, launch_app APPSRC={APPID}:
         Build FAP app with appid={APPID}; upload & start it over USB
-    faps_copy:
+    fap_deploy:
         Build and upload all FAP apps over USB
 
 Flashing & debugging:
@@ -26,7 +26,7 @@ Other:
     cli:
         Open a Flipper CLI session over USB
     firmware_cdb, updater_cdb:
-        Generate сompilation_database.json
+        Generate compilation_database.json
     lint, lint_py:
         run linters
     format, format_py:

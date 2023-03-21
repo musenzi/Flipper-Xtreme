@@ -14,7 +14,7 @@
 #include "gui/dap_gui.h"
 #include "usb/dap_v2_usb.h"
 #include <dialogs/dialogs.h>
-#include "DAP_Link_icons.h"
+#include "dap_link_icons.h"
 
 /***************************************************************************/
 /****************************** DAP COMMON *********************************/
@@ -486,8 +486,7 @@ int32_t dap_link_app(void* p) {
     if(furi_hal_usb_is_locked()) {
         DialogsApp* dialogs = furi_record_open(RECORD_DIALOGS);
         DialogMessage* message = dialog_message_alloc();
-        dialog_message_set_header(
-            message, "Connection\nis active!", 3, 2, AlignLeft, AlignTop);
+        dialog_message_set_header(message, "Connection\nis active!", 3, 2, AlignLeft, AlignTop);
         dialog_message_set_text(
             message,
             "Disconnect from\nPC or phone to\nuse this function.",

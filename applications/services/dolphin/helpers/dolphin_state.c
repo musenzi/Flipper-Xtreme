@@ -15,9 +15,10 @@
 #define DOLPHIN_STATE_HEADER_MAGIC 0xD0
 #define DOLPHIN_STATE_HEADER_VERSION 0x01
 
-const int DOLPHIN_LEVELS[DOLPHIN_LEVEL_COUNT] = {100,  200,  300,  450,  600,  750,  950,  1150, 1350, 1600,
-                                                1850, 2100, 2400, 2700, 3000, 3350, 3700,  4050, 4450, 4850,
-                                                5250, 5700, 6150, 6600, 7100, 7600, 8100,  8650, 9200};
+const int DOLPHIN_LEVELS[DOLPHIN_LEVEL_COUNT] = {100,  200,  300,  450,  600,  750,  950,  1150,
+                                                 1350, 1600, 1850, 2100, 2400, 2700, 3000, 3350,
+                                                 3700, 4050, 4450, 4850, 5250, 5700, 6150, 6600,
+                                                 7100, 7600, 8100, 8650, 9200};
 
 #define BUTTHURT_MAX 14
 #define BUTTHURT_MIN 0
@@ -169,7 +170,7 @@ void dolphin_state_on_deed(DolphinState* dolphin_state, DolphinDeed deed) {
     int32_t new_butthurt = ((int32_t)dolphin_state->data.butthurt) -
                            (butthurt_icounter_level_old != butthurt_icounter_level_new);
     new_butthurt = CLAMP(new_butthurt, BUTTHURT_MAX, BUTTHURT_MIN);
-    if(new_butthurt >= 7) new_butthurt = BUTTHURT_MIN; // FLIPPER STAYS HAPPY
+
     dolphin_state->data.butthurt = new_butthurt;
     dolphin_state->data.timestamp = dolphin_state_timestamp();
     dolphin_state->dirty = true;

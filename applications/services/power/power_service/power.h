@@ -26,14 +26,15 @@ typedef enum {
 } PowerEventType;
 
 typedef enum {
-    BatteryStyleOff = 1,
-    BatteryStyleBar = 2,
-    BatteryStylePercent = 3,
-    BatteryStyleInvertedPercent = 4,
-    BatteryStyleRetro3 = 5,
-    BatteryStyleRetro5 = 6,
-    BatteryStyleBarPercent = 0,
-} BatteryStyle;
+    BatteryIconOff,
+    BatteryIconBar,
+    BatteryIconPercent,
+    BatteryIconInvertedPercent,
+    BatteryIconRetro3,
+    BatteryIconRetro5,
+    BatteryIconBarPercent,
+    BatteryIconCount,
+} BatteryIcon;
 
 typedef union {
     uint8_t battery_level;
@@ -51,7 +52,7 @@ typedef struct {
     float current_charger;
     float current_gauge;
 
-    float voltage_battery_charging;
+    float voltage_battery_charge_limit;
     float voltage_charger;
     float voltage_gauge;
     float voltage_vbus;

@@ -25,7 +25,7 @@ Applications for factory testing the Flipper.
 Applications for main Flipper menu.
 
 - `archive`             - Archive and file manager 
-- `bad_usb`             - Bad USB application
+- `bad_kb`              - Bad KB application
 - `fap_loader`          - External applications loader
 - `gpio`                - GPIO application: includes USART bridge and GPIO control
 - `ibutton`             - iButton application, onewire keys and more
@@ -86,4 +86,4 @@ Small applications providing configuration for basic firmware and its services.
 Utility apps not visible in other menus.
 
 - `storage_move_to_sd`  - Data migration tool for internal storage
-- `updater`             - updater service & application
+- `updater`             - Update service & application

@@ -224,14 +224,6 @@ void furi_hal_version_init() {
     FURI_LOG_I(TAG, "Init OK");
 }
 
-bool furi_hal_version_do_i_belong_here() {
-    return furi_hal_version_get_hw_target() == 7;
-}
-
-const char* furi_hal_version_get_model_name() {
-    return "Flipper Zero";
-}
-
 FuriHalVersionOtpVersion furi_hal_version_get_otp_version() {
     if(*(uint64_t*)FURI_HAL_VERSION_OTP_ADDRESS == 0xFFFFFFFF) {
         return FuriHalVersionOtpVersionEmpty;
@@ -279,8 +271,16 @@ FuriHalVersionRegion furi_hal_version_get_hw_region() {
     return FuriHalVersionRegionUnknown;
 }
 
+FuriHalVersionRegion furi_hal_version_get_hw_region_otp() {
+    return furi_hal_version.board_region;
+}
+
 const char* furi_hal_version_get_hw_region_name() {
-    switch(furi_hal_version_get_hw_region()) {
+    return "R00";
+}
+
+const char* furi_hal_version_get_hw_region_name_otp() {
+    switch(furi_hal_version_get_hw_region_otp()) {
     case FuriHalVersionRegionUnknown:
         return "R00";
     case FuriHalVersionRegionEuRu:
