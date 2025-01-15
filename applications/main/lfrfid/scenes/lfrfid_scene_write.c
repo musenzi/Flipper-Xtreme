@@ -1,5 +1,4 @@
 #include "../lfrfid_i.h"
-#include "xtreme/assets.h"
 
 static void lfrfid_write_callback(LFRFIDWorkerWriteResult result, void* context) {
     LfRfid* app = context;
@@ -34,7 +33,7 @@ void lfrfid_scene_write_on_enter(void* context) {
             AlignCenter,
             AlignTop);
     }
-    popup_set_icon(popup, 0, 3, XTREME_ASSETS()->I_RFIDDolphinSend_97x61);
+    popup_set_icon(popup, 0, 3, &I_RFIDDolphinSend_97x61);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, LfRfidViewPopup);
 
@@ -58,7 +57,7 @@ bool lfrfid_scene_write_on_event(void* context, SceneManagerEvent event) {
             scene_manager_next_scene(app->scene_manager, LfRfidSceneWriteSuccess);
             consumed = true;
         } else if(event.event == LfRfidEventWriteProtocolCannotBeWritten) {
-            popup_set_icon(popup, 72, 17, &I_DolphinCommon_56x48);
+            popup_set_icon(popup, 83, 22, &I_WarningDolphinFlip_45x42);
             popup_set_header(popup, "Error", 64, 3, AlignCenter, AlignTop);
             popup_set_text(popup, "This protocol\ncannot be written", 3, 17, AlignLeft, AlignTop);
             notification_message(app->notifications, &sequence_blink_start_red);
@@ -66,7 +65,7 @@ bool lfrfid_scene_write_on_event(void* context, SceneManagerEvent event) {
         } else if(
             (event.event == LfRfidEventWriteFobCannotBeWritten) ||
             (event.event == LfRfidEventWriteTooLongToWrite)) {
-            popup_set_icon(popup, 72, 17, &I_DolphinCommon_56x48);
+            popup_set_icon(popup, 83, 22, &I_WarningDolphinFlip_45x42);
             popup_set_header(popup, "Still trying to write...", 64, 3, AlignCenter, AlignTop);
             popup_set_text(
                 popup,

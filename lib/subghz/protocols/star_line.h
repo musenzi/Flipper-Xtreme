@@ -11,10 +11,6 @@ extern const SubGhzProtocolDecoder subghz_protocol_star_line_decoder;
 extern const SubGhzProtocolEncoder subghz_protocol_star_line_encoder;
 extern const SubGhzProtocol subghz_protocol_star_line;
 
-void star_line_reset_mfname();
-
-void star_line_reset_kl_type();
-
 /**
  * Allocate SubGhzProtocolEncoderStarLine.
  * @param environment Pointer to a SubGhzEnvironment instance
@@ -27,26 +23,6 @@ void* subghz_protocol_encoder_star_line_alloc(SubGhzEnvironment* environment);
  * @param context Pointer to a SubGhzProtocolEncoderStarLine instance
  */
 void subghz_protocol_encoder_star_line_free(void* context);
-
-/**
- * Key generation from simple data.
- * @param context Pointer to a SubGhzProtocolEncoderStarLine instance
- * @param flipper_format Pointer to a FlipperFormat instance
- * @param serial Serial number, 24 bit
- * @param btn Button number, 8 bit
- * @param cnt Counter value, 16 bit
- * @param manufacture_name Name of manufacturer's key
- * @param preset Modulation, SubGhzRadioPreset
- * @return true On success
- */
-bool subghz_protocol_star_line_create_data(
-    void* context,
-    FlipperFormat* flipper_format,
-    uint32_t serial,
-    uint8_t btn,
-    uint16_t cnt,
-    const char* manufacture_name,
-    SubGhzRadioPreset* preset);
 
 /**
  * Deserialize and generating an upload to send.
@@ -102,7 +78,7 @@ void subghz_protocol_decoder_star_line_feed(void* context, bool level, uint32_t 
  * @param context Pointer to a SubGhzProtocolDecoderStarLine instance
  * @return hash Hash sum
  */
-uint8_t subghz_protocol_decoder_star_line_get_hash_data(void* context);
+uint32_t subghz_protocol_decoder_star_line_get_hash_data(void* context);
 
 /**
  * Serialize data SubGhzProtocolDecoderStarLine.

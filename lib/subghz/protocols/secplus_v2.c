@@ -7,13 +7,15 @@
 #include "../blocks/generic.h"
 #include "../blocks/math.h"
 
+#include "../blocks/custom_btn_i.h"
+
 /*
 * Help
 * https://github.com/argilo/secplus
 * https://github.com/merbanan/rtl_433/blob/master/src/devices/secplus_v2.c
 */
 
-#define TAG "SubGhzProtocoSecPlus_v2"
+#define TAG "SubGhzProtocoSecPlusV2"
 
 #define SECPLUS_V2_HEADER 0x3C0000000000
 #define SECPLUS_V2_HEADER_MASK 0xFFFF3C0000000000
@@ -338,6 +340,12 @@ static void
         instance->btn = 0;
         instance->serial = 0;
     }
+
+    // Save original button for later use
+    if(subghz_custom_btn_get_original() == 0) {
+        subghz_custom_btn_set_original(instance->btn);
+    }
+    subghz_custom_btn_set_max(4);
 }
 
 /** 
@@ -367,12 +375,26 @@ static uint64_t subghz_protocol_secplus_v2_encode_half(uint8_t roll_array[], uin
     return data;
 }
 
+/**
+ * Defines the button value for the current btn_id
+ * Basic set | 0x68 | 0x80 | 0x81 | 0xE2 | 0x78
+ * @return Button code
+ */
+static uint8_t subghz_protocol_secplus_v2_get_btn_code();
+
 /** 
  * Security+ 2.0 message encoding
  * @param instance SubGhzProtocolEncoderSecPlus_v2* 
  */
 
 static void subghz_protocol_secplus_v2_encode(SubGhzProtocolEncoderSecPlus_v2* instance) {
+    // Save original button for later use
+    if(subghz_custom_btn_get_original() == 0) {
+        subghz_custom_btn_set_original(instance->generic.btn);
+    }
+
+    instance->generic.btn = subghz_protocol_secplus_v2_get_btn_code();
+
     uint32_t fixed_1[1] = {instance->generic.btn << 12 | instance->generic.serial >> 20};
     uint32_t fixed_2[1] = {instance->generic.serial & 0xFFFFF};
     uint8_t rolling_digits[18] = {0};
@@ -611,7 +633,7 @@ bool subghz_protocol_secplus_v2_create_data(
     if((res == SubGhzProtocolStatusOk) &&
        !flipper_format_write_hex(flipper_format, "Secplus_packet_1", key_data, sizeof(uint64_t))) {
         FURI_LOG_E(TAG, "Unable to add Secplus_packet_1");
-        res = SubGhzProtocolStatusError;
+        res = SubGhzProtocolStatusErrorParserOthers;
     }
     return res == SubGhzProtocolStatusOk;
 }
@@ -749,10 +771,10 @@ void subghz_protocol_decoder_secplus_v2_feed(void* context, bool level, uint32_t
     }
 }
 
-uint8_t subghz_protocol_decoder_secplus_v2_get_hash_data(void* context) {
+uint32_t subghz_protocol_decoder_secplus_v2_get_hash_data(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderSecPlus_v2* instance = context;
-    return subghz_protocol_blocks_get_hash_data(
+    return subghz_protocol_blocks_get_hash_data_long(
         &instance->decoder, (instance->decoder.decode_count_bit / 8) + 1);
 }
 
@@ -809,6 +831,104 @@ SubGhzProtocolStatus
     } while(false);
 
     return ret;
+}
+
+static uint8_t subghz_protocol_secplus_v2_get_btn_code() {
+    uint8_t custom_btn_id = subghz_custom_btn_get();
+    uint8_t original_btn_code = subghz_custom_btn_get_original();
+    uint8_t btn = original_btn_code;
+
+    // Set custom button
+    if((custom_btn_id == SUBGHZ_CUSTOM_BTN_OK) && (original_btn_code != 0)) {
+        // Restore original button code
+        btn = original_btn_code;
+    } else if(custom_btn_id == SUBGHZ_CUSTOM_BTN_UP) {
+        switch(original_btn_code) {
+        case 0x68:
+            btn = 0x80;
+            break;
+        case 0x80:
+            btn = 0x68;
+            break;
+        case 0x81:
+            btn = 0x80;
+            break;
+        case 0xE2:
+            btn = 0x80;
+            break;
+        case 0x78:
+            btn = 0x80;
+            break;
+
+        default:
+            break;
+        }
+    } else if(custom_btn_id == SUBGHZ_CUSTOM_BTN_DOWN) {
+        switch(original_btn_code) {
+        case 0x68:
+            btn = 0x81;
+            break;
+        case 0x80:
+            btn = 0x81;
+            break;
+        case 0x81:
+            btn = 0x68;
+            break;
+        case 0xE2:
+            btn = 0x81;
+            break;
+        case 0x78:
+            btn = 0x81;
+            break;
+
+        default:
+            break;
+        }
+    } else if(custom_btn_id == SUBGHZ_CUSTOM_BTN_LEFT) {
+        switch(original_btn_code) {
+        case 0x68:
+            btn = 0xE2;
+            break;
+        case 0x80:
+            btn = 0xE2;
+            break;
+        case 0x81:
+            btn = 0xE2;
+            break;
+        case 0xE2:
+            btn = 0x68;
+            break;
+        case 0x78:
+            btn = 0xE2;
+            break;
+
+        default:
+            break;
+        }
+    } else if(custom_btn_id == SUBGHZ_CUSTOM_BTN_RIGHT) {
+        switch(original_btn_code) {
+        case 0x68:
+            btn = 0x78;
+            break;
+        case 0x80:
+            btn = 0x78;
+            break;
+        case 0x81:
+            btn = 0x78;
+            break;
+        case 0xE2:
+            btn = 0x78;
+            break;
+        case 0x78:
+            btn = 0x68;
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    return btn;
 }
 
 void subghz_protocol_decoder_secplus_v2_get_string(void* context, FuriString* output) {

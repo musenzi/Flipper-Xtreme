@@ -8,8 +8,8 @@
 #include "gui.h"
 
 #include <furi.h>
+#include <furi_hal_rtc.h>
 #include <m-array.h>
-#include <m-algo.h>
 #include <stdio.h>
 
 #include "canvas.h"
@@ -39,20 +39,10 @@
 
 #define GUI_THREAD_FLAG_DRAW (1 << 0)
 #define GUI_THREAD_FLAG_INPUT (1 << 1)
-#define GUI_THREAD_FLAG_ALL (GUI_THREAD_FLAG_DRAW | GUI_THREAD_FLAG_INPUT)
+#define GUI_THREAD_FLAG_ASCII (1 << 2)
+#define GUI_THREAD_FLAG_ALL (GUI_THREAD_FLAG_DRAW | GUI_THREAD_FLAG_INPUT | GUI_THREAD_FLAG_ASCII)
 
 ARRAY_DEF(ViewPortArray, ViewPort*, M_PTR_OPLIST);
-
-typedef struct {
-    GuiCanvasCommitCallback callback;
-    void* context;
-} CanvasCallbackPair;
-
-ARRAY_DEF(CanvasCallbackPairArray, CanvasCallbackPair, M_POD_OPLIST);
-
-#define M_OPL_CanvasCallbackPairArray_t() ARRAY_OPLIST(CanvasCallbackPairArray, M_POD_OPLIST)
-
-ALGO_DEF(CanvasCallbackPairArray, CanvasCallbackPairArray_t);
 
 /** Gui structure */
 struct Gui {
@@ -65,15 +55,25 @@ struct Gui {
     bool direct_draw;
     ViewPortArray_t layers[GuiLayerMAX];
     Canvas* canvas;
-    CanvasCallbackPairArray_t canvas_callback_pair;
 
     // Input
     FuriMessageQueue* input_queue;
     FuriPubSub* input_events;
     uint8_t ongoing_input;
     ViewPort* ongoing_input_view_port;
+
+    uint16_t hide_statusbar_count;
+
+    FuriMessageQueue* ascii_queue;
+    FuriPubSub* ascii_events;
 };
 
+/** Find enabled ViewPort in ViewPortArray
+ *
+ * @param[in]  array  The ViewPortArray instance
+ *
+ * @return     ViewPort instance or NULL
+ */
 ViewPort* gui_view_port_find_enabled(ViewPortArray_t array);
 
 /** Update GUI, request redraw
@@ -82,8 +82,30 @@ ViewPort* gui_view_port_find_enabled(ViewPortArray_t array);
  */
 void gui_update(Gui* gui);
 
+/** Input event callback
+ * 
+ * Used to receive input from input service or to inject new input events
+ *
+ * @param[in]  value  The value pointer (InputEvent*)
+ * @param      ctx    The context (Gui instance)
+ */
 void gui_input_events_callback(const void* value, void* ctx);
 
+/** Get count of view ports in layer
+ *
+ * @param      gui        The Gui instance
+ * @param[in]  layer      GuiLayer that we want to get count of view ports
+ */
+size_t gui_active_view_port_count(Gui* gui, GuiLayer layer);
+
+/** Lock GUI
+ *
+ * @param      gui   The Gui instance
+ */
 void gui_lock(Gui* gui);
 
+/** Unlock GUI
+ *
+ * @param      gui   The Gui instance
+ */
 void gui_unlock(Gui* gui);

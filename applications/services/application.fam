@@ -5,11 +5,11 @@ App(
     provides=[
         "crypto_start",
         "rpc_start",
+        "expansion_start",
         "bt",
-        "xtreme",
         "desktop",
         "loader",
         "power",
-        "namechangersrv",
     ],
+    sdk_headers=["applications.h"],
 )

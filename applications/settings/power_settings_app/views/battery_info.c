@@ -4,12 +4,8 @@
 #include <assets_icons.h>
 #include <locale/locale.h>
 
-#define LOW_CHARGE_THRESHOLD 10
-#define HIGH_DRAIN_CURRENT_THRESHOLD 100
-
-struct BatteryInfo {
-    View* view;
-};
+#define LOW_CHARGE_THRESHOLD (10)
+#define HIGH_DRAIN_CURRENT_THRESHOLD (-100)
 
 static void draw_stat(Canvas* canvas, int x, int y, const Icon* icon, char* val) {
     canvas_draw_frame(canvas, x - 7, y + 7, 30, 13);
@@ -18,21 +14,20 @@ static void draw_stat(Canvas* canvas, int x, int y, const Icon* icon, char* val)
     canvas_draw_box(canvas, x - 4, y + 16, 24, 6);
     canvas_set_color(canvas, ColorBlack);
     canvas_draw_str_aligned(canvas, x + 8, y + 22, AlignCenter, AlignBottom, val);
-};
+}
 
 static void draw_battery(Canvas* canvas, BatteryInfoModel* data, int x, int y) {
     char emote[20] = {};
     char header[20] = {};
     char value[20] = {};
 
-    int32_t drain_current = data->gauge_current * (-1000);
-    uint32_t charge_current = data->gauge_current * 1000;
+    int32_t current = 1000.0f * data->gauge_current;
 
     // Draw battery
     canvas_draw_icon(canvas, x, y, &I_BatteryBody_52x28);
-    if(charge_current > 0) {
+    if(current > 0) {
         canvas_draw_icon(canvas, x + 16, y + 7, &I_FaceCharging_29x14);
-    } else if(drain_current > HIGH_DRAIN_CURRENT_THRESHOLD) {
+    } else if(current < HIGH_DRAIN_CURRENT_THRESHOLD) {
         canvas_draw_icon(canvas, x + 16, y + 7, &I_FaceConfused_29x14);
     } else if(data->charge < LOW_CHARGE_THRESHOLD) {
         canvas_draw_icon(canvas, x + 16, y + 7, &I_FaceNopower_29x14);
@@ -41,10 +36,10 @@ static void draw_battery(Canvas* canvas, BatteryInfoModel* data, int x, int y) {
     }
 
     // Draw bubble
-    elements_bubble(canvas, 53, 0, 71, 39);
+    elements_bubble(canvas, 53, 0, 71, data->alt ? 28 : 39);
 
     // Set text
-    if(charge_current > 0) {
+    if(current > 0) {
         snprintf(emote, sizeof(emote), "%s", "Yummy!");
         snprintf(header, sizeof(header), "%s", "Charging at");
         snprintf(
@@ -53,40 +48,60 @@ static void draw_battery(Canvas* canvas, BatteryInfoModel* data, int x, int y) {
             "%lu.%luV   %lumA",
             (uint32_t)(data->vbus_voltage),
             (uint32_t)(data->vbus_voltage * 10) % 10,
-            charge_current);
-    } else if(drain_current > 0) {
+            current);
+    } else if(current < -5) {
+        // 0-5ma deadband
         snprintf(
             emote,
             sizeof(emote),
             "%s",
-            drain_current > HIGH_DRAIN_CURRENT_THRESHOLD ? "Oh no!" : "Om-nom-nom!");
+            current < HIGH_DRAIN_CURRENT_THRESHOLD ? "Oh no!" : "Om-nom-nom!");
         snprintf(header, sizeof(header), "%s", "Consumption is");
         snprintf(
             value,
             sizeof(value),
             "%ld %s",
-            drain_current,
-            drain_current > HIGH_DRAIN_CURRENT_THRESHOLD ? "mA!" : "mA");
-    } else if(drain_current != 0) {
-        snprintf(header, 20, "...");
-    } else if(data->charge_voltage_limit < 4.2) {
-        // Non-default battery charging limit, mention it
-        snprintf(emote, sizeof(emote), "Charged!");
-        snprintf(header, sizeof(header), "Limited to");
-        snprintf(
-            value,
-            sizeof(value),
-            "%lu.%luV",
-            (uint32_t)(data->charge_voltage_limit),
-            (uint32_t)(data->charge_voltage_limit * 10) % 10);
+            ABS(current),
+            current < HIGH_DRAIN_CURRENT_THRESHOLD ? "mA!" : "mA");
+    } else if(data->vbus_voltage > 0) {
+        if(data->charge_voltage_limit < 4.2) {
+            // Non-default battery charging limit, mention it
+            snprintf(emote, sizeof(emote), "Charged!");
+            snprintf(header, sizeof(header), "Limited to");
+            snprintf(
+                value,
+                sizeof(value),
+                "%lu.%luV",
+                (uint32_t)(data->charge_voltage_limit),
+                (uint32_t)(data->charge_voltage_limit * 10) % 10);
+        } else {
+            snprintf(header, sizeof(header), "Charged!");
+        }
     } else {
-        snprintf(header, sizeof(header), "Charged!");
+        snprintf(header, sizeof(header), "Napping...");
+        snprintf(value, sizeof(value), "(~%ld mA)", ABS(current));
     }
 
-    canvas_draw_str_aligned(canvas, 92, y + 3, AlignCenter, AlignCenter, emote);
-    canvas_draw_str_aligned(canvas, 92, y + 15, AlignCenter, AlignCenter, header);
-    canvas_draw_str_aligned(canvas, 92, y + 27, AlignCenter, AlignCenter, value);
-};
+    if(data->alt) {
+        if(!strcmp(value, "")) {
+            canvas_draw_str_aligned(canvas, x + 92, y + 14, AlignCenter, AlignCenter, header);
+        } else if(!strcmp(header, "")) {
+            canvas_draw_str_aligned(canvas, x + 92, y + 14, AlignCenter, AlignCenter, value);
+        } else {
+            canvas_draw_str_aligned(canvas, x + 92, y + 9, AlignCenter, AlignCenter, header);
+            canvas_draw_str_aligned(canvas, x + 92, y + 19, AlignCenter, AlignCenter, value);
+        }
+    } else {
+        if(!strcmp(emote, "")) {
+            canvas_draw_str_aligned(canvas, x + 92, y + 9, AlignCenter, AlignCenter, header);
+            canvas_draw_str_aligned(canvas, x + 92, y + 21, AlignCenter, AlignCenter, value);
+        } else {
+            canvas_draw_str_aligned(canvas, 92, y + 3, AlignCenter, AlignCenter, emote);
+            canvas_draw_str_aligned(canvas, 92, y + 15, AlignCenter, AlignCenter, header);
+            canvas_draw_str_aligned(canvas, 92, y + 27, AlignCenter, AlignCenter, value);
+        }
+    }
+}
 
 static void battery_info_draw_callback(Canvas* canvas, void* context) {
     furi_assert(context);
@@ -94,7 +109,7 @@ static void battery_info_draw_callback(Canvas* canvas, void* context) {
 
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
-    draw_battery(canvas, model, 0, 5);
+    draw_battery(canvas, model, 0, model->alt ? 0 : 5);
 
     char batt_level[10];
     char temperature[10];
@@ -119,10 +134,42 @@ static void battery_info_draw_callback(Canvas* canvas, void* context) {
         (uint32_t)(model->gauge_voltage * 10) % 10UL);
     snprintf(health, sizeof(health), "%d%%", model->health);
 
-    draw_stat(canvas, 8, 42, &I_Battery_16x16, batt_level);
-    draw_stat(canvas, 40, 42, &I_Temperature_16x16, temperature);
-    draw_stat(canvas, 72, 42, &I_Voltage_16x16, voltage);
-    draw_stat(canvas, 104, 42, &I_Health_16x16, health);
+    int h = model->alt ? 28 : 42;
+    draw_stat(canvas, 8, h, &I_Battery_16x16, batt_level);
+    draw_stat(canvas, 40, h, &I_Temperature_16x16, temperature);
+    draw_stat(canvas, 72, h, &I_Voltage_16x16, voltage);
+    draw_stat(canvas, 104, h, &I_Health_16x16, health);
+
+    if(model->alt) {
+        elements_button_left(canvas, "Back");
+        elements_button_right(canvas, "Next");
+        char uptime[15];
+        uint32_t sec = furi_get_tick() / furi_kernel_get_tick_frequency();
+        snprintf(
+            uptime, sizeof(uptime), "%02luh%02lum%02lus", sec / 3600, sec / 60 % 60, sec % 60);
+        canvas_draw_str_aligned(canvas, 64, 61, AlignCenter, AlignBottom, uptime);
+    }
+}
+
+static bool battery_info_input_callback(InputEvent* event, void* context) {
+    furi_assert(event);
+    furi_assert(context);
+
+    BatteryInfo* battery_info = context;
+
+    bool about_battery;
+    with_view_model(
+        battery_info->view, BatteryInfoModel * model, { about_battery = model->alt; }, false);
+    if(about_battery && event->type == InputTypeShort) {
+        if(event->key == InputKeyLeft) {
+            event->key = InputKeyBack;
+        } else if(event->key == InputKeyRight) {
+            event->key = InputKeyBack;
+            battery_info->exit_to_about = true;
+        }
+    }
+
+    return false;
 }
 
 BatteryInfo* battery_info_alloc() {
@@ -131,6 +178,7 @@ BatteryInfo* battery_info_alloc() {
     view_set_context(battery_info->view, battery_info);
     view_allocate_model(battery_info->view, ViewModelTypeLocking, sizeof(BatteryInfoModel));
     view_set_draw_callback(battery_info->view, battery_info_draw_callback);
+    view_set_input_callback(battery_info->view, battery_info_input_callback);
 
     return battery_info;
 }

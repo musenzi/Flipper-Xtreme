@@ -2,6 +2,17 @@
 #include <m-list.h>
 #include <m-dict.h>
 
+#define STORAGE_PATH_PREFIX_LEN 4u
+_Static_assert(
+    sizeof(STORAGE_ANY_PATH_PREFIX) == STORAGE_PATH_PREFIX_LEN + 1,
+    "Any path prefix len mismatch");
+_Static_assert(
+    sizeof(STORAGE_EXT_PATH_PREFIX) == STORAGE_PATH_PREFIX_LEN + 1,
+    "Ext path prefix len mismatch");
+_Static_assert(
+    sizeof(STORAGE_INT_PATH_PREFIX) == STORAGE_PATH_PREFIX_LEN + 1,
+    "Int path prefix len mismatch");
+
 #define FS_CALL(_storage, _fn) ret = _storage->fs_api->_fn;
 
 static bool storage_type_is_valid(StorageType type) {
@@ -26,24 +37,31 @@ static StorageData* get_storage_by_file(File* file, StorageData* storages) {
 
 static const char* cstr_path_without_vfs_prefix(FuriString* path) {
     const char* path_cstr = furi_string_get_cstr(path);
-    return path_cstr + MIN(4u, strlen(path_cstr));
+    return path_cstr + MIN(STORAGE_PATH_PREFIX_LEN, strlen(path_cstr));
 }
 
 static StorageType storage_get_type_by_path(FuriString* path) {
     StorageType type = ST_ERROR;
     const char* path_cstr = furi_string_get_cstr(path);
 
+    if(furi_string_size(path) > STORAGE_PATH_PREFIX_LEN) {
+        if(path_cstr[STORAGE_PATH_PREFIX_LEN] != '/') {
+            return ST_ERROR;
+        }
+    }
+
     if(memcmp(path_cstr, STORAGE_EXT_PATH_PREFIX, strlen(STORAGE_EXT_PATH_PREFIX)) == 0) {
         type = ST_EXT;
     } else if(memcmp(path_cstr, STORAGE_INT_PATH_PREFIX, strlen(STORAGE_INT_PATH_PREFIX)) == 0) {
         type = ST_INT;
+    } else if(memcmp(path_cstr, STORAGE_MNT_PATH_PREFIX, strlen(STORAGE_MNT_PATH_PREFIX)) == 0) {
+        type = ST_MNT;
     } else if(memcmp(path_cstr, STORAGE_ANY_PATH_PREFIX, strlen(STORAGE_ANY_PATH_PREFIX)) == 0) {
         type = ST_ANY;
     }
 
     return type;
 }
-
 static void storage_path_change_to_real_storage(FuriString* path, StorageType real_storage) {
     if(furi_string_search(path, STORAGE_ANY_PATH_PREFIX) == 0) {
         switch(real_storage) {
@@ -73,12 +91,17 @@ FS_Error storage_get_data(Storage* app, FuriString* path, StorageData** storage)
             storage_path_change_to_real_storage(path, type);
         }
 
-        furi_assert(type == ST_EXT || type == ST_INT);
         *storage = &app->storage[type];
 
         return FSE_OK;
     } else {
         return FSE_INVALID_NAME;
+    }
+}
+
+static void storage_path_trim_trailing_slashes(FuriString* path) {
+    while(furi_string_end_with(path, "/")) {
+        furi_string_left(path, furi_string_size(path) - 1);
     }
 }
 
@@ -95,7 +118,7 @@ bool storage_process_file_open(
     file->error_id = storage_get_data(app, path, &storage);
 
     if(file->error_id == FSE_OK) {
-        if(storage_path_already_open(path, storage->files)) {
+        if(storage_path_already_open(path, storage)) {
             file->error_id = FSE_ALREADY_OPEN;
         } else {
             if(access_mode & FSAM_WRITE) {
@@ -190,6 +213,19 @@ static uint64_t storage_process_file_tell(Storage* app, File* file) {
     return ret;
 }
 
+static bool storage_process_file_expand(Storage* app, File* file, const uint64_t size) {
+    bool ret = false;
+    StorageData* storage = get_storage_by_file(file, app->storage);
+
+    if(storage == NULL) {
+        file->error_id = FSE_INVALID_PARAMETER;
+    } else {
+        FS_CALL(storage, file.expand(storage, file, size));
+    }
+
+    return ret;
+}
+
 static bool storage_process_file_truncate(Storage* app, File* file) {
     bool ret = false;
     StorageData* storage = get_storage_by_file(file, app->storage);
@@ -252,7 +288,7 @@ bool storage_process_dir_open(Storage* app, File* file, FuriString* path) {
     file->error_id = storage_get_data(app, path, &storage);
 
     if(file->error_id == FSE_OK) {
-        if(storage_path_already_open(path, storage->files)) {
+        if(storage_path_already_open(path, storage)) {
             file->error_id = FSE_ALREADY_OPEN;
         } else {
             storage_push_storage_file(file, path, storage);
@@ -341,13 +377,49 @@ static FS_Error storage_process_common_remove(Storage* app, FuriString* path) {
     FS_Error ret = storage_get_data(app, path, &storage);
 
     do {
-        if(storage_path_already_open(path, storage->files)) {
+        if(ret != FSE_OK) break;
+
+        if(storage_path_already_open(path, storage)) {
             ret = FSE_ALREADY_OPEN;
             break;
         }
 
         storage_data_timestamp(storage);
         FS_CALL(storage, common.remove(storage, cstr_path_without_vfs_prefix(path)));
+    } while(false);
+
+    return ret;
+}
+
+static FS_Error storage_process_common_rename(Storage* app, FuriString* old, FuriString* new) {
+    FS_Error ret = FSE_OK;
+
+    do {
+        const StorageType storage_type_old = storage_get_type_by_path(old);
+        const StorageType storage_type_new = storage_get_type_by_path(new);
+
+        // Different filesystems, return to caller to do copy + remove
+        if(storage_type_old != storage_type_new) {
+            ret = FSE_NOT_IMPLEMENTED;
+            break;
+        }
+
+        // Same filesystem, use fast rename
+        StorageData* storage;
+        ret = storage_get_data(app, old, &storage);
+
+        if(ret != FSE_OK) break;
+
+        if(storage_path_already_open(old, storage)) {
+            ret = FSE_ALREADY_OPEN;
+            break;
+        }
+
+        storage_data_timestamp(storage);
+        FS_CALL(
+            storage,
+            common.rename(
+                storage, cstr_path_without_vfs_prefix(old), cstr_path_without_vfs_prefix(new)));
     } while(false);
 
     return ret;
@@ -382,8 +454,33 @@ static FS_Error storage_process_common_fs_info(
     return ret;
 }
 
+static bool
+    storage_process_common_equivalent_path(Storage* app, FuriString* path1, FuriString* path2) {
+    bool ret = false;
+
+    do {
+        const StorageType storage_type1 = storage_get_type_by_path(path1);
+        const StorageType storage_type2 = storage_get_type_by_path(path2);
+
+        // Paths on different storages are of course not equal
+        if(storage_type1 != storage_type2) break;
+
+        StorageData* storage;
+        const FS_Error status = storage_get_data(app, path1, &storage);
+
+        if(status != FSE_OK) break;
+
+        FS_CALL(
+            storage,
+            common.equivalent_path(furi_string_get_cstr(path1), furi_string_get_cstr(path2)));
+
+    } while(false);
+
+    return ret;
+}
+
 /****************** Raw SD API ******************/
-// TODO think about implementing a custom storage API to split that kind of api linkage
+// TODO FL-3521: think about implementing a custom storage API to split that kind of api linkage
 #include "storages/storage_ext.h"
 
 static FS_Error storage_process_sd_format(Storage* app) {
@@ -402,12 +499,38 @@ static FS_Error storage_process_sd_format(Storage* app) {
 static FS_Error storage_process_sd_unmount(Storage* app) {
     FS_Error ret = FSE_OK;
 
-    if(storage_data_status(&app->storage[ST_EXT]) == StorageStatusNotReady) {
-        ret = FSE_NOT_READY;
-    } else {
-        sd_unmount_card(&app->storage[ST_EXT]);
-        storage_data_timestamp(&app->storage[ST_EXT]);
-    }
+    do {
+        StorageData* storage = &app->storage[ST_EXT];
+        if(storage_data_status(storage) == StorageStatusNotReady) {
+            ret = FSE_NOT_READY;
+            break;
+        }
+
+        if(storage_open_files_count(storage)) {
+            ret = FSE_DENIED;
+            break;
+        }
+
+        sd_unmount_card(storage);
+        storage_data_timestamp(storage);
+    } while(false);
+
+    return ret;
+}
+
+static FS_Error storage_process_sd_mount(Storage* app) {
+    FS_Error ret = FSE_OK;
+
+    do {
+        StorageData* storage = &app->storage[ST_EXT];
+        if(storage_data_status(storage) != StorageStatusNotReady) {
+            ret = FSE_NOT_READY;
+            break;
+        }
+
+        ret = sd_mount_card(storage, true);
+        storage_data_timestamp(storage);
+    } while(false);
 
     return ret;
 }
@@ -454,7 +577,7 @@ void storage_process_alias(
         FuriString* apps_data_path_with_appsid = furi_string_alloc_set(APPS_DATA_PATH "/");
         furi_string_cat(apps_data_path_with_appsid, furi_thread_get_appid(thread_id));
 
-        // "/app" -> "/ext/apps_data/appsid"
+        // "/data" -> "/ext/apps_data/appsid"
         furi_string_replace_at(
             path,
             0,
@@ -472,6 +595,25 @@ void storage_process_alias(
         }
 
         furi_string_free(apps_data_path_with_appsid);
+    } else if(furi_string_start_with(path, STORAGE_APP_ASSETS_PATH_PREFIX)) {
+        FuriString* apps_assets_path_with_appsid = furi_string_alloc_set(APPS_ASSETS_PATH "/");
+        furi_string_cat(apps_assets_path_with_appsid, furi_thread_get_appid(thread_id));
+
+        // "/assets" -> "/ext/apps_assets/appsid"
+        furi_string_replace_at(
+            path,
+            0,
+            strlen(STORAGE_APP_ASSETS_PATH_PREFIX),
+            furi_string_get_cstr(apps_assets_path_with_appsid));
+
+        furi_string_free(apps_assets_path_with_appsid);
+    } else if(furi_string_start_with(path, STORAGE_CFG_PATH_PREFIX)) {
+        // Create config folder if it doesn't exist
+        FuriString* config_path = furi_string_alloc_set(STORAGE_CFG_PATH_PREFIX);
+        if(create_folders && storage_process_common_stat(app, config_path, NULL) != FSE_OK) {
+            storage_process_common_mkdir(app, config_path);
+        }
+        furi_string_free(config_path);
     }
 }
 
@@ -520,6 +662,10 @@ void storage_process_message_internal(Storage* app, StorageMessage* message) {
     case StorageCommandFileTell:
         message->return_data->uint64_value =
             storage_process_file_tell(app, message->data->file.file);
+        break;
+    case StorageCommandFileExpand:
+        message->return_data->bool_value = storage_process_file_expand(
+            app, message->data->fexpand.file, message->data->fexpand.size);
         break;
     case StorageCommandFileTruncate:
         message->return_data->bool_value =
@@ -579,6 +725,16 @@ void storage_process_message_internal(Storage* app, StorageMessage* message) {
         storage_process_alias(app, path, message->data->path.thread_id, false);
         message->return_data->error_value = storage_process_common_remove(app, path);
         break;
+    case StorageCommandCommonRename: {
+        FuriString* old_path = furi_string_alloc_set(message->data->rename.old);
+        FuriString* new_path = furi_string_alloc_set(message->data->rename.new);
+        storage_process_alias(app, old_path, message->data->cequivpath.thread_id, false);
+        storage_process_alias(app, new_path, message->data->cequivpath.thread_id, false);
+        message->return_data->error_value = storage_process_common_rename(app, old_path, new_path);
+        furi_string_free(old_path);
+        furi_string_free(new_path);
+        break;
+    }
     case StorageCommandCommonMkDir:
         path = furi_string_alloc_set(message->data->path.path);
         storage_process_alias(app, path, message->data->path.thread_id, true);
@@ -595,6 +751,27 @@ void storage_process_message_internal(Storage* app, StorageMessage* message) {
             app, message->data->cresolvepath.path, message->data->cresolvepath.thread_id, true);
         break;
 
+    case StorageCommandCommonEquivalentPath: {
+        FuriString* path1 = furi_string_alloc_set(message->data->cequivpath.path1);
+        FuriString* path2 = furi_string_alloc_set(message->data->cequivpath.path2);
+        storage_path_trim_trailing_slashes(path1);
+        storage_path_trim_trailing_slashes(path2);
+        storage_process_alias(app, path1, message->data->cequivpath.thread_id, false);
+        storage_process_alias(app, path2, message->data->cequivpath.thread_id, false);
+        // Comparison is done on path name, same beginning of name != same file/folder
+        // Check with a / suffixed to ensure same file/folder name
+        furi_string_cat(path1, "/");
+        furi_string_cat(path2, "/");
+        if(message->data->cequivpath.truncate) {
+            furi_string_left(path2, furi_string_size(path1));
+        }
+        message->return_data->bool_value =
+            storage_process_common_equivalent_path(app, path1, path2);
+        furi_string_free(path1);
+        furi_string_free(path2);
+        break;
+    }
+
     // SD operations
     case StorageCommandSDFormat:
         message->return_data->error_value = storage_process_sd_format(app);
@@ -602,12 +779,34 @@ void storage_process_message_internal(Storage* app, StorageMessage* message) {
     case StorageCommandSDUnmount:
         message->return_data->error_value = storage_process_sd_unmount(app);
         break;
+    case StorageCommandSDMount:
+        message->return_data->error_value = storage_process_sd_mount(app);
+        break;
     case StorageCommandSDInfo:
         message->return_data->error_value =
             storage_process_sd_info(app, message->data->sdinfo.info);
         break;
     case StorageCommandSDStatus:
         message->return_data->error_value = storage_process_sd_status(app);
+        break;
+
+    // Virtual operations
+    case StorageCommandVirtualInit:
+        File* image = message->data->virtualinit.image;
+        StorageData* image_storage = get_storage_by_file(image, app->storage);
+        message->return_data->error_value = storage_process_virtual_init(image_storage, image);
+        break;
+    case StorageCommandVirtualFormat:
+        message->return_data->error_value = storage_process_virtual_format(&app->storage[ST_MNT]);
+        break;
+    case StorageCommandVirtualMount:
+        message->return_data->error_value = storage_process_virtual_mount(&app->storage[ST_MNT]);
+        break;
+    case StorageCommandVirtualUnmount:
+        message->return_data->error_value = storage_process_virtual_unmount(&app->storage[ST_MNT]);
+        break;
+    case StorageCommandVirtualQuit:
+        message->return_data->error_value = storage_process_virtual_quit(&app->storage[ST_MNT]);
         break;
     }
 

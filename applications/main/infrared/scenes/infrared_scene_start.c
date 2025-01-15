@@ -1,21 +1,21 @@
-#include "../infrared_i.h"
+#include "../infrared_app_i.h"
 
 enum SubmenuIndex {
     SubmenuIndexUniversalRemotes,
     SubmenuIndexLearnNewRemote,
-    SubmenuIndexLearnNewRemoteRaw,
     SubmenuIndexSavedRemotes,
-    SubmenuIndexDebug,
-    SubmenuIndexDebugSettings
+    SubmenuIndexDebugSettings,
+    SubmenuIndexLearnNewRemoteRaw,
+    SubmenuIndexDebug
 };
 
 static void infrared_scene_start_submenu_callback(void* context, uint32_t index) {
-    Infrared* infrared = context;
+    InfraredApp* infrared = context;
     view_dispatcher_send_custom_event(infrared->view_dispatcher, index);
 }
 
 void infrared_scene_start_on_enter(void* context) {
-    Infrared* infrared = context;
+    InfraredApp* infrared = context;
     Submenu* submenu = infrared->submenu;
     SceneManager* scene_manager = infrared->scene_manager;
 
@@ -37,27 +37,29 @@ void infrared_scene_start_on_enter(void* context) {
         SubmenuIndexSavedRemotes,
         infrared_scene_start_submenu_callback,
         infrared);
+    submenu_add_item(
+        submenu,
+        "GPIO Settings",
+        SubmenuIndexDebugSettings,
+        infrared_scene_start_submenu_callback,
+        infrared);
 
-    if(infrared->app_state.is_debug_enabled) {
-        submenu_add_item(
-            submenu,
-            "Learn New Remote RAW",
-            SubmenuIndexLearnNewRemoteRaw,
-            infrared_scene_start_submenu_callback,
-            infrared);
-        submenu_add_item(
-            submenu,
-            "Debug RX",
-            SubmenuIndexDebug,
-            infrared_scene_start_submenu_callback,
-            infrared);
-        submenu_add_item(
-            submenu,
-            "Debug Settings",
-            SubmenuIndexDebugSettings,
-            infrared_scene_start_submenu_callback,
-            infrared);
-    }
+    submenu_add_lockable_item(
+        submenu,
+        "Learn New Remote RAW",
+        SubmenuIndexLearnNewRemoteRaw,
+        infrared_scene_start_submenu_callback,
+        infrared,
+        !infrared->app_state.is_debug_enabled,
+        "Enable\nDebug!");
+    submenu_add_lockable_item(
+        submenu,
+        "Debug RX",
+        SubmenuIndexDebug,
+        infrared_scene_start_submenu_callback,
+        infrared,
+        !infrared->app_state.is_debug_enabled,
+        "Enable\nDebug!");
 
     const uint32_t submenu_index =
         scene_manager_get_scene_state(scene_manager, InfraredSceneStart);
@@ -68,7 +70,7 @@ void infrared_scene_start_on_enter(void* context) {
 }
 
 bool infrared_scene_start_on_event(void* context, SceneManagerEvent event) {
-    Infrared* infrared = context;
+    InfraredApp* infrared = context;
     SceneManager* scene_manager = infrared->scene_manager;
 
     bool consumed = false;
@@ -106,6 +108,6 @@ bool infrared_scene_start_on_event(void* context, SceneManagerEvent event) {
 }
 
 void infrared_scene_start_on_exit(void* context) {
-    Infrared* infrared = context;
+    InfraredApp* infrared = context;
     submenu_reset(infrared->submenu);
 }

@@ -1,11 +1,12 @@
-from SCons.Builder import Builder
-from SCons.Action import Action
-from SCons.Script import Delete, Mkdir, GetBuildFailures, Flatten
-import multiprocessing
-import webbrowser
 import atexit
-import sys
+import multiprocessing
 import subprocess
+import sys
+import webbrowser
+
+from SCons.Action import Action
+from SCons.Builder import Builder
+from SCons.Script import Delete, Flatten, GetBuildFailures, Mkdir
 
 __no_browser = False
 
@@ -16,7 +17,7 @@ def _set_browser_action(target, source, env):
         __no_browser = True
 
 
-def emit_pvsreport(target, source, env):
+def _emit_pvsreport(target, source, env):
     target_dir = env["REPORT_DIR"]
     if env["PLATFORM"] == "win32":
         # Report generator on Windows emits to a subfolder of given output folder
@@ -78,7 +79,17 @@ def generate(env):
         BUILDERS={
             "PVSCheck": Builder(
                 action=Action(
-                    '${PVSCHECKBIN} analyze ${PVSOPTIONS} -f "${SOURCE}" -o "${TARGET}"',
+                    [
+                        [
+                            "${PVSCHECKBIN}",
+                            "analyze",
+                            "${PVSOPTIONS}",
+                            "-f",
+                            "${SOURCE}",
+                            "-o",
+                            "${TARGET}",
+                        ]
+                    ],
                     "${PVSCHECKCOMSTR}",
                 ),
                 suffix=".log",
@@ -91,11 +102,21 @@ def generate(env):
                         # PlogConverter.exe and plog-converter have different behavior
                         Mkdir("${TARGET.dir}") if env["PLATFORM"] == "win32" else None,
                         Action(_set_browser_action, None),
-                        '${PVSCONVBIN} ${PVSCONVOPTIONS} "${SOURCE}" -o "${REPORT_DIR}"',
+                        Action(
+                            [
+                                [
+                                    "${PVSCONVBIN}",
+                                    "${PVSCONVOPTIONS}",
+                                    "${SOURCE}",
+                                    "-o",
+                                    "${REPORT_DIR}",
+                                ]
+                            ]
+                        ),
                     ],
                     "${PVSCONVCOMSTR}",
                 ),
-                emitter=emit_pvsreport,
+                emitter=_emit_pvsreport,
                 src_suffix=".log",
             ),
         }

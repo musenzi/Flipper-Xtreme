@@ -6,6 +6,19 @@
 #include "scenes/desktop_settings_scene.h"
 #include <desktop/views/desktop_view_pin_input.h>
 
+const char* EXTRA_KEYBINDS[] = {
+    "Apps Menu",
+    "Archive",
+    "Clock",
+    "Device Info",
+    "Lock Menu",
+    "Lock Keypad",
+    "Lock with PIN",
+    "Passport",
+    "Wipe Device",
+};
+const size_t EXTRA_KEYBINDS_COUNT = COUNT_OF(EXTRA_KEYBINDS);
+
 static bool desktop_settings_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
     DesktopSettingsApp* app = context;
@@ -18,10 +31,47 @@ static bool desktop_settings_back_event_callback(void* context) {
     return scene_manager_handle_back_event(app->scene_manager);
 }
 
+const char* desktop_settings_app_get_keybind(DesktopSettingsApp* app) {
+    KeybindType type =
+        scene_manager_get_scene_state(app->scene_manager, DesktopSettingsAppSceneKeybindsType);
+    KeybindKey key =
+        scene_manager_get_scene_state(app->scene_manager, DesktopSettingsAppSceneKeybindsKey);
+    return app->desktop->keybinds[type][key].data;
+}
+
+bool desktop_settings_app_set_keybind(DesktopSettingsApp* app, const char* value) {
+    if(strnlen(value, MAX_KEYBIND_LENGTH) == MAX_KEYBIND_LENGTH) {
+        // No NULL terminator, value is too long for keybind
+        DialogMessage* message = dialog_message_alloc();
+        dialog_message_set_header(message, "Keybind Too Long", 64, 0, AlignCenter, AlignTop);
+        dialog_message_set_buttons(message, NULL, "Ok", NULL);
+        dialog_message_set_text(
+            message,
+            "Keybinds are max 63 chars.\n"
+            "Shorten the file path or\n"
+            "choose something else.",
+            64,
+            32,
+            AlignCenter,
+            AlignCenter);
+        dialog_message_show(app->dialogs, message);
+        dialog_message_free(message);
+        return false;
+    }
+    KeybindType type =
+        scene_manager_get_scene_state(app->scene_manager, DesktopSettingsAppSceneKeybindsType);
+    KeybindKey key =
+        scene_manager_get_scene_state(app->scene_manager, DesktopSettingsAppSceneKeybindsKey);
+    strlcpy(app->desktop->keybinds[type][key].data, value, MAX_KEYBIND_LENGTH);
+    DESKTOP_KEYBINDS_SAVE(&app->desktop->keybinds, sizeof(app->desktop->keybinds));
+    return true;
+}
+
 DesktopSettingsApp* desktop_settings_app_alloc() {
     DesktopSettingsApp* app = malloc(sizeof(DesktopSettingsApp));
 
     app->gui = furi_record_open(RECORD_GUI);
+    app->desktop = furi_record_open(RECORD_DESKTOP);
     app->dialogs = furi_record_open(RECORD_DIALOGS);
     app->view_dispatcher = view_dispatcher_alloc();
     app->scene_manager = scene_manager_alloc(&desktop_settings_scene_handlers, app);
@@ -37,6 +87,7 @@ DesktopSettingsApp* desktop_settings_app_alloc() {
 
     app->popup = popup_alloc();
     app->submenu = submenu_alloc();
+    app->dialog_ex = dialog_ex_alloc();
     app->variable_item_list = variable_item_list_alloc();
     app->pin_input_view = desktop_view_pin_input_alloc();
     app->pin_setup_howto_view = desktop_settings_view_pin_setup_howto_alloc();
@@ -50,6 +101,8 @@ DesktopSettingsApp* desktop_settings_app_alloc() {
         variable_item_list_get_view(app->variable_item_list));
     view_dispatcher_add_view(
         app->view_dispatcher, DesktopSettingsAppViewIdPopup, popup_get_view(app->popup));
+    view_dispatcher_add_view(
+        app->view_dispatcher, DesktopSettingsAppViewDialogEx, dialog_ex_get_view(app->dialog_ex));
     view_dispatcher_add_view(
         app->view_dispatcher,
         DesktopSettingsAppViewIdPinInput,
@@ -71,10 +124,12 @@ void desktop_settings_app_free(DesktopSettingsApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewMenu);
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewVarItemList);
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewIdPopup);
+    view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewDialogEx);
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewIdPinInput);
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewIdPinSetupHowto);
     view_dispatcher_remove_view(app->view_dispatcher, DesktopSettingsAppViewIdPinSetupHowto2);
     variable_item_list_free(app->variable_item_list);
+    dialog_ex_free(app->dialog_ex);
     submenu_free(app->submenu);
     popup_free(app->popup);
     desktop_view_pin_input_free(app->pin_input_view);
@@ -85,13 +140,13 @@ void desktop_settings_app_free(DesktopSettingsApp* app) {
     scene_manager_free(app->scene_manager);
     // Records
     furi_record_close(RECORD_DIALOGS);
+    furi_record_close(RECORD_DESKTOP);
     furi_record_close(RECORD_GUI);
     free(app);
 }
 
 extern int32_t desktop_settings_app(void* p) {
     DesktopSettingsApp* app = desktop_settings_app_alloc();
-    DESKTOP_SETTINGS_LOAD(&app->settings);
     if(p && (strcmp(p, DESKTOP_SETTINGS_RUN_PIN_SETUP_ARG) == 0)) {
         scene_manager_next_scene(app->scene_manager, DesktopSettingsAppScenePinSetupHowto);
     } else {
@@ -99,6 +154,9 @@ extern int32_t desktop_settings_app(void* p) {
     }
 
     view_dispatcher_run(app->view_dispatcher);
+    if(app->save_settings) {
+        DESKTOP_SETTINGS_SAVE(&app->desktop->settings);
+    }
     desktop_settings_app_free(app);
     return 0;
 }

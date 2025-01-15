@@ -90,6 +90,29 @@ void elements_scrollbar_pos(
     }
 }
 
+void elements_scrollbar_horizontal(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    uint16_t pos,
+    uint16_t total) {
+    furi_assert(canvas);
+    // prevent overflows
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, x, y - 3, width, 3);
+    // dot line
+    canvas_set_color(canvas, ColorBlack);
+    for(uint8_t i = x; i < width + x; i += 2) {
+        canvas_draw_dot(canvas, i, y - 2);
+    }
+    // Position block
+    if(total) {
+        float block_w = ((float)width) / total;
+        canvas_draw_box(canvas, x + (block_w * pos), y - 3, MAX(block_w, 1), 3);
+    }
+}
+
 void elements_scrollbar(Canvas* canvas, uint16_t pos, uint16_t total) {
     furi_assert(canvas);
 
@@ -232,15 +255,15 @@ static size_t
     } else if(horizontal == AlignRight) {
         px_left = x;
     } else {
-        furi_assert(0);
+        furi_crash();
     }
 
     if(len_px > px_left) {
-        uint8_t excess_symbols_approximately =
-            roundf((float)(len_px - px_left) / ((float)len_px / (float)text_size));
+        size_t excess_symbols_approximately =
+            ceilf((float)(len_px - px_left) / ((float)len_px / (float)text_size));
         // reduce to 5 to be sure dash fit, and next line will be at least 5 symbols long
         if(excess_symbols_approximately > 0) {
-            excess_symbols_approximately = MAX(excess_symbols_approximately, 5);
+            excess_symbols_approximately = MAX(excess_symbols_approximately, 5u);
             result = text_size - excess_symbols_approximately - 1;
         } else {
             result = text_size;
@@ -290,6 +313,7 @@ void elements_multiline_text_aligned(
         } else if((y + font_height) > canvas_height(canvas)) {
             line = furi_string_alloc_printf("%.*s...\n", chars_fit, start);
         } else {
+            chars_fit -= 1; // account for the dash
             line = furi_string_alloc_printf("%.*s-\n", chars_fit, start);
         }
         canvas_draw_str_aligned(canvas, x, y, horizontal, vertical, furi_string_get_cstr(line));
@@ -573,18 +597,24 @@ void elements_string_fit_width(Canvas* canvas, FuriString* string, uint8_t width
     }
 }
 
-void elements_scrollable_text_line(
+void elements_scrollable_text_line_str(
     Canvas* canvas,
     uint8_t x,
     uint8_t y,
     uint8_t width,
-    FuriString* string,
+    const char* string,
     size_t scroll,
-    bool ellipsis) {
-    FuriString* line = furi_string_alloc_set(string);
+    bool ellipsis,
+    bool centered) {
+    FuriString* line = furi_string_alloc_set_str(string);
 
     size_t len_px = canvas_string_width(canvas, furi_string_get_cstr(line));
     if(len_px > width) {
+        if(centered) {
+            centered = false;
+            x -= width / 2;
+        }
+
         if(ellipsis) {
             width -= canvas_string_width(canvas, "...");
         }
@@ -592,7 +622,7 @@ void elements_scrollable_text_line(
         // Calculate scroll size
         size_t scroll_size = furi_string_size(line);
         size_t right_width = 0;
-        for(size_t i = scroll_size; i > 0; i--) {
+        for(size_t i = scroll_size - 1; i > 0; i--) {
             right_width += canvas_glyph_width(canvas, furi_string_get_char(line, i));
             if(right_width > width) break;
             scroll_size--;
@@ -616,8 +646,38 @@ void elements_scrollable_text_line(
         }
     }
 
-    canvas_draw_str(canvas, x, y, furi_string_get_cstr(line));
+    if(centered) {
+        canvas_draw_str_aligned(
+            canvas, x, y, AlignCenter, AlignBottom, furi_string_get_cstr(line));
+    } else {
+        canvas_draw_str(canvas, x, y, furi_string_get_cstr(line));
+    }
     furi_string_free(line);
+}
+
+void elements_scrollable_text_line(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    FuriString* string,
+    size_t scroll,
+    bool ellipsis) {
+    elements_scrollable_text_line_str(
+        canvas, x, y, width, furi_string_get_cstr(string), scroll, ellipsis, false);
+}
+
+void elements_scrollable_text_line_centered(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    FuriString* string,
+    size_t scroll,
+    bool ellipsis,
+    bool centered) {
+    elements_scrollable_text_line_str(
+        canvas, x, y, width, furi_string_get_cstr(string), scroll, ellipsis, centered);
 }
 
 void elements_text_box(

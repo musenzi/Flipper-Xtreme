@@ -19,19 +19,21 @@ void view_tie_icon_animation(View* view, IconAnimation* icon_animation) {
 
 void view_set_draw_callback(View* view, ViewDrawCallback callback) {
     furi_assert(view);
-    furi_assert(view->draw_callback == NULL);
     view->draw_callback = callback;
 }
 
 void view_set_input_callback(View* view, ViewInputCallback callback) {
     furi_assert(view);
-    furi_assert(view->input_callback == NULL);
     view->input_callback = callback;
+}
+
+void view_set_ascii_callback(View* view, ViewAsciiCallback callback) {
+    furi_assert(view);
+    view->ascii_callback = callback;
 }
 
 void view_set_custom_callback(View* view, ViewCustomCallback callback) {
     furi_assert(view);
-    furi_assert(callback);
     view->custom_callback = callback;
 }
 
@@ -62,7 +64,6 @@ void view_set_update_callback_context(View* view, void* context) {
 
 void view_set_context(View* view, void* context) {
     furi_assert(view);
-    furi_assert(context);
     view->context = context;
 }
 
@@ -81,12 +82,12 @@ void view_allocate_model(View* view, ViewModelType type, size_t size) {
         view->model = malloc(size);
     } else if(view->model_type == ViewModelTypeLocking) {
         ViewModelLocking* model = malloc(sizeof(ViewModelLocking));
-        model->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+        model->mutex = furi_mutex_alloc(FuriMutexTypeRecursive);
         furi_check(model->mutex);
         model->data = malloc(size);
         view->model = model;
     } else {
-        furi_crash(NULL);
+        furi_crash();
     }
 }
 
@@ -103,7 +104,7 @@ void view_free_model(View* view) {
         free(model);
         view->model = NULL;
     } else {
-        furi_crash(NULL);
+        furi_crash();
     }
 }
 
@@ -155,6 +156,15 @@ bool view_input(View* view, InputEvent* event) {
     furi_assert(view);
     if(view->input_callback) {
         return view->input_callback(event, view->context);
+    } else {
+        return false;
+    }
+}
+
+bool view_ascii(View* view, AsciiEvent* event) {
+    furi_assert(view);
+    if(view->ascii_callback) {
+        return view->ascii_callback(event, view->context);
     } else {
         return false;
     }

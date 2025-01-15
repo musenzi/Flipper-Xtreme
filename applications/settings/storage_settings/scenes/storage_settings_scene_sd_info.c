@@ -19,7 +19,7 @@ void storage_settings_scene_sd_info_on_enter(void* context) {
     dialog_ex_set_result_callback(dialog_ex, storage_settings_scene_sd_info_dialog_callback);
 
     if(sd_status != FSE_OK) {
-        dialog_ex_set_icon(dialog_ex, 72, 17, &I_DolphinCommon_56x48);
+        dialog_ex_set_icon(dialog_ex, 83, 22, &I_WarningDolphinFlip_45x42);
         dialog_ex_set_header(dialog_ex, "SD Card Not Mounted", 64, 3, AlignCenter, AlignTop);
         dialog_ex_set_text(
             dialog_ex, "Try to reinsert\nor format SD\ncard.", 3, 19, AlignLeft, AlignTop);
@@ -28,7 +28,7 @@ void storage_settings_scene_sd_info_on_enter(void* context) {
         double total_v = (double)sd_info.kb_total;
         double free_v = (double)sd_info.kb_free;
         char* units[] = {"KiB", "MiB", "GiB", "TiB"};
-        uint total_i, free_i;
+        uint8_t total_i, free_i;
         for(total_i = 0; total_i < COUNT_OF(units); total_i++) {
             if(total_v < 1024) break;
             total_v /= 1024;

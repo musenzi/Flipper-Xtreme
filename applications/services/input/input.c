@@ -6,24 +6,11 @@
 
 static Input* input = NULL;
 
-inline static void input_timer_start(FuriTimer* timer_id, uint32_t ticks) {
-    TimerHandle_t hTimer = (TimerHandle_t)timer_id;
-    furi_check(xTimerChangePeriod(hTimer, ticks, portMAX_DELAY) == pdPASS);
-}
-
-inline static void input_timer_stop(FuriTimer* timer_id) {
-    TimerHandle_t hTimer = (TimerHandle_t)timer_id;
-    furi_check(xTimerStop(hTimer, portMAX_DELAY) == pdPASS);
-    // xTimerStop is not actually stopping timer,
-    // Instead it places stop event into timer queue
-    // This code ensures that timer is stopped
-    while(xTimerIsTimerActive(hTimer) == pdTRUE) furi_delay_tick(1);
-}
-
 void input_press_timer_callback(void* arg) {
     InputPinState* input_pin = arg;
     InputEvent event;
-    event.sequence = input_pin->counter;
+    event.sequence_source = INPUT_SEQUENCE_SOURCE_HARDWARE;
+    event.sequence_counter = input_pin->counter;
     event.key = input_pin->pin->key;
     input_pin->press_counter++;
     if(input_pin->press_counter == INPUT_LONG_PRESS_COUNTS) {
@@ -73,6 +60,8 @@ int32_t input_srv(void* p) {
     input->thread_id = furi_thread_get_current_id();
     input->event_pubsub = furi_pubsub_alloc();
     furi_record_create(RECORD_INPUT_EVENTS, input->event_pubsub);
+    input->ascii_pubsub = furi_pubsub_alloc();
+    furi_record_create(RECORD_ASCII_EVENTS, input->ascii_pubsub);
 
 #if INPUT_DEBUG
     furi_hal_gpio_init_simple(&gpio_ext_pa4, GpioModeOutputPushPull);
@@ -114,17 +103,20 @@ int32_t input_srv(void* p) {
 
                 // Common state info
                 InputEvent event;
+                event.sequence_source = INPUT_SEQUENCE_SOURCE_HARDWARE;
                 event.key = input->pin_states[i].pin->key;
 
                 // Short / Long / Repeat timer routine
                 if(state) {
                     input->counter++;
                     input->pin_states[i].counter = input->counter;
-                    event.sequence = input->pin_states[i].counter;
-                    input_timer_start(input->pin_states[i].press_timer, INPUT_PRESS_TICKS);
+                    event.sequence_counter = input->pin_states[i].counter;
+                    furi_timer_start(input->pin_states[i].press_timer, INPUT_PRESS_TICKS);
                 } else {
-                    event.sequence = input->pin_states[i].counter;
-                    input_timer_stop(input->pin_states[i].press_timer);
+                    event.sequence_counter = input->pin_states[i].counter;
+                    furi_timer_stop(input->pin_states[i].press_timer);
+                    while(furi_timer_is_running(input->pin_states[i].press_timer))
+                        furi_delay_tick(1);
                     if(input->pin_states[i].press_counter < INPUT_LONG_PRESS_COUNTS) {
                         event.type = InputTypeShort;
                         furi_pubsub_publish(input->event_pubsub, &event);

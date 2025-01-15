@@ -74,6 +74,8 @@ const SubGhzProtocol subghz_protocol_scher_khan = {
 
     .decoder = &subghz_protocol_scher_khan_decoder,
     .encoder = &subghz_protocol_scher_khan_encoder,
+
+    .filter = SubGhzProtocolFilter_AutoAlarms,
 };
 
 void* subghz_protocol_decoder_scher_khan_alloc(SubGhzEnvironment* environment) {
@@ -220,18 +222,48 @@ static void subghz_protocol_scher_khan_check_remote_controller(
     */
 
     switch(instance->data_count_bit) {
-    // case 35: //MAGIC CODE, Static
-    //     instance->protocol_name = "MAGIC CODE, Static";
-    //     break;
+    case 35: //MAGIC CODE, Static
+        *protocol_name = "MAGIC CODE, Static";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
     case 51: //MAGIC CODE, Dynamic
         *protocol_name = "MAGIC CODE, Dynamic";
         instance->serial = ((instance->data >> 24) & 0xFFFFFF0) | ((instance->data >> 20) & 0x0F);
         instance->btn = (instance->data >> 24) & 0x0F;
         instance->cnt = instance->data & 0xFFFF;
         break;
-        // case 57: //MAGIC CODE PRO / PRO2
-        //     instance->protocol_name = "MAGIC CODE PRO / PRO2";
-        //     break;
+    case 57: //MAGIC CODE PRO / PRO2
+        *protocol_name = "MAGIC CODE PRO/PRO2";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
+    case 63: //MAGIC CODE, Dynamic Response
+        *protocol_name = "MAGIC CODE, Response";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
+    case 64: //MAGICAR, Response ???
+        *protocol_name = "MAGICAR, Response";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
+    case 81: //MAGIC CODE PRO / PRO2 Response ???
+        *protocol_name = "MAGIC CODE PRO,\n Response";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
+    case 82: //MAGIC CODE PRO / PRO2 Response ???
+        *protocol_name = "MAGIC CODE PRO,\n Response";
+        instance->serial = 0;
+        instance->btn = 0;
+        instance->cnt = 0;
+        break;
 
     default:
         *protocol_name = "Unknown";
@@ -242,10 +274,10 @@ static void subghz_protocol_scher_khan_check_remote_controller(
     }
 }
 
-uint8_t subghz_protocol_decoder_scher_khan_get_hash_data(void* context) {
+uint32_t subghz_protocol_decoder_scher_khan_get_hash_data(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderScherKhan* instance = context;
-    return subghz_protocol_blocks_get_hash_data(
+    return subghz_protocol_blocks_get_hash_data_long(
         &instance->decoder, (instance->decoder.decode_count_bit / 8) + 1);
 }
 

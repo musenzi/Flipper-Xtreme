@@ -6,6 +6,8 @@
 
 #define TAG "CliSrv"
 
+#define CLI_INPUT_LEN_LIMIT 256
+
 Cli* cli_alloc() {
     Cli* cli = malloc(sizeof(Cli));
 
@@ -37,9 +39,11 @@ char cli_getc(Cli* cli) {
     if(cli->session != NULL) {
         if(cli->session->rx((uint8_t*)&c, 1, FuriWaitForever) == 0) {
             cli_reset(cli);
+            furi_delay_tick(10);
         }
     } else {
         cli_reset(cli);
+        furi_delay_tick(10);
     }
     return c;
 }
@@ -99,25 +103,18 @@ void cli_print_usage(const char* cmd, const char* usage, const char* arg) {
 }
 
 void cli_motd() {
-    printf("\r\n"
-           "              _.-------.._                    -,\r\n"
-           "          .-\"```\"--..,,_/ /`-,               -,  \\ \r\n"
-           "       .:\"          /:/  /'\\  \\     ,_...,  `. |  |\r\n"
-           "      /       ,----/:/  /`\\ _\\~`_-\"`     _;\r\n"
-           "     '      / /`\"\"\"'\\ \\ \\.~`_-'      ,-\"'/ \r\n"
-           "    |      | |  0    | | .-'      ,/`  /\r\n"
-           "   |    ,..\\ \\     ,.-\"`       ,/`    /\r\n"
-           "  ;    :    `/`\"\"\\`           ,/--==,/-----,\r\n"
-           "  |    `-...|        -.___-Z:_______J...---;\r\n"
-           "  :         `                           _-'\r\n"
-           " _L_  _     ___  ___  ___  ___  ____--\"`___  _     ___\r\n"
-           "| __|| |   |_ _|| _ \\| _ \\| __|| _ \\   / __|| |   |_ _|\r\n"
-           "| _| | |__  | | |  _/|  _/| _| |   /  | (__ | |__  | |\r\n"
-           "|_|  |____||___||_|  |_|  |___||_|_\\   \\___||____||___|\r\n"
-           "\r\n"
-           "Welcome to Flipper Zero Command Line Interface!\r\n"
-           "Read Manual https://docs.flipperzero.one\r\n"
-           "\r\n");
+    printf(
+        "\033[0m\r\n"
+        "                                                     ,-' \\_/    `\\\r\n"
+        "\033[1;31m__\033[0m  \033[1;31m__\033[37m_\033[0m                              ___ ___    ___ (          ,  |\r\n"
+        "\033[1;31m\\\033[0m \033[1;31m\\/\033[0m \033[1;31m/\033[0m \033[1m|_ _ __ ___ _ __ ___   ___\033[0m   / ___| |   |_ _| `-.-'`-.-'/|_|\r\n"
+        " \033[1;31m\\\033[0m  \033[1;31m/\033[37m| __| \'__/ _ \\ \'_ ` _ \\ / _ \\\033[0m | |   | |    | |     \\     / | |\r\n"
+        " \033[1;31m/\033[0m  \033[1;31m\\\033[37m| |_| | |  __/ | | | | |  __/\033[0m | |___| |___ | |     |=[]=: / ,'\r\n"
+        "\033[1;31m/_/\\_\\\033[37m\\__|_|  \\___|_| |_| |_|\\___|\033[0m  \\____|_____|___|    /    `\\ '\r\n"
+        "                                                       :  \\/   )\r\n"
+        "Welcome to the \033[1;31mX\033[37mtreme\033[0m Command Line Interface!          |  /    ;\r\n"
+        "Visit \033[1;31mhttps://flipper-xtre.me/\033[0m for even more fun       | /    /"
+        "\r\n");
 
     const Version* firmware_version = furi_hal_version_get_firmware_version();
     if(firmware_version) {
@@ -353,7 +350,9 @@ void cli_process_input(Cli* cli) {
         cli_handle_backspace(cli);
     } else if(in_chr == CliSymbolAsciiCR) {
         cli_handle_enter(cli);
-    } else if(in_chr >= 0x20 && in_chr < 0x7F) { //-V560
+    } else if(
+        (in_chr >= 0x20 && in_chr < 0x7F) && //-V560
+        (furi_string_size(cli->line) < CLI_INPUT_LEN_LIMIT)) {
         if(cli->cursor_position == furi_string_size(cli->line)) {
             furi_string_push_back(cli->line, in_chr);
             cli_putc(cli, in_chr);
@@ -458,7 +457,7 @@ int32_t cli_srv(void* p) {
         furi_thread_set_stdout_callback(NULL);
     }
 
-    if(furi_hal_rtc_get_boot_mode() == FuriHalRtcBootModeNormal) {
+    if(furi_hal_is_normal_boot()) {
         cli_session_open(cli, &cli_vcp);
     } else {
         FURI_LOG_W(TAG, "Skipping start in special boot mode");

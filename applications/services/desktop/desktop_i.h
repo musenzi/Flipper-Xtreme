@@ -20,6 +20,7 @@
 
 #include <loader/loader.h>
 #include <notification/notification_app.h>
+#include <toolbox/api_lock.h>
 
 #define STATUS_BAR_Y_SHIFT 13
 
@@ -27,7 +28,6 @@ typedef enum {
     DesktopViewIdMain,
     DesktopViewIdLockMenu,
     DesktopViewIdLocked,
-    DesktopViewIdDebug,
     DesktopViewIdHwMismatch,
     DesktopViewIdPinInput,
     DesktopViewIdPinTimeout,
@@ -45,7 +45,7 @@ struct Desktop {
 
     Popup* hw_mismatch_popup;
     DesktopLockMenuView* lock_menu;
-    DesktopDebugView* debug_view;
+    DesktopDebugView* _debug_view; // Unused, kept for compatibility
     DesktopViewLocked* locked_view;
     DesktopMainView* main_view;
     DesktopViewPinTimeout* pin_timeout_view;
@@ -58,6 +58,9 @@ struct Desktop {
     DesktopViewPinInput* pin_input_view;
 
     ViewPort* lock_icon_viewport;
+    ViewPort* _dummy_mode_icon_viewport; // Unused, kept for compatibility
+    ViewPort* clock_viewport;
+    ViewPort* stealth_mode_icon_viewport;
 
     AnimationManager* animation_manager;
 
@@ -68,12 +71,27 @@ struct Desktop {
     FuriPubSub* input_events_pubsub;
     FuriPubSubSubscription* input_events_subscription;
     FuriTimer* auto_lock_timer;
+    FuriTimer* update_clock_timer;
 
-    bool in_transition;
+    FuriPubSub* status_pubsub;
+
+    uint8_t time_hour;
+    uint8_t time_minute;
+    bool time_format_12 : 1; // 1 - 12 hour, 0 - 24H
+
+    bool in_transition : 1;
+
+    Keybinds keybinds;
+
+    FuriPubSub* ascii_events_pubsub;
+    FuriPubSubSubscription* ascii_events_subscription;
+
+    FuriApiLock animation_lock;
 };
 
 Desktop* desktop_alloc();
 
 void desktop_free(Desktop* desktop);
-void desktop_lock(Desktop* desktop);
+void desktop_lock(Desktop* desktop, bool pin_lock);
 void desktop_unlock(Desktop* desktop);
+void desktop_set_stealth_mode_state(Desktop* desktop, bool enabled);

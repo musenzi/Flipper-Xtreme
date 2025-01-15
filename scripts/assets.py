@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 
-import asset_packer
+import os
+import shutil
+import pathlib
+
 from flipper.app import App
 from flipper.assets.icon import file2image
-
-import os
-import pathlib
 
 ICONS_SUPPORTED_FORMATS = ["png"]
 
 ICONS_TEMPLATE_H_HEADER = """#pragma once
 
+#include <furi.h>
 #include <gui/icon.h>
 
 """
-ICONS_TEMPLATE_H_ICON_NAME = "extern const Icon {name};\n"
+ICONS_TEMPLATE_H_ICON_NAME = "extern Icon {name};\n"
 
 ICONS_TEMPLATE_C_HEADER = """#include "{assets_filename}.h"
 
@@ -23,7 +24,10 @@ ICONS_TEMPLATE_C_HEADER = """#include "{assets_filename}.h"
 """
 ICONS_TEMPLATE_C_FRAME = "const uint8_t {name}[] = {data};\n"
 ICONS_TEMPLATE_C_DATA = "const uint8_t* const {name}[] = {data};\n"
-ICONS_TEMPLATE_C_ICONS = "const Icon {name} = {{.width={width},.height={height},.frame_count={frame_count},.frame_rate={frame_rate},.frames=_{name}}};\n"
+ICONS_TEMPLATE_C_ICONS = "Icon {name} = {{.width={width},.height={height},.frame_count={frame_count},.frame_rate={frame_rate},.frames=_{name}}};\n"
+
+MAX_IMAGE_WIDTH = 128
+MAX_IMAGE_HEIGHT = 64
 
 
 class Main(App):
@@ -62,7 +66,6 @@ class Main(App):
         )
         self.parser_copro.add_argument("cube_dir", help="Path to Cube folder")
         self.parser_copro.add_argument("output_dir", help="Path to output folder")
-        self.parser_copro.add_argument("mcu", help="MCU series as in copro folder")
         self.parser_copro.add_argument(
             "--cube_ver", dest="cube_ver", help="Cube version", required=True
         )
@@ -102,8 +105,21 @@ class Main(App):
         )
         self.parser_dolphin.set_defaults(func=self.dolphin)
 
+        self.parser_packs = self.subparsers.add_parser(
+            "packs", help="Assemble asset packs"
+        )
+        self.parser_packs.add_argument("input_directory", help="Packs source directory")
+        self.parser_packs.add_argument(
+            "output_directory", help="Packs output directory"
+        )
+        self.parser_packs.set_defaults(func=self.packs)
+
     def _icon2header(self, file):
         image = file2image(file)
+        if image.width > MAX_IMAGE_WIDTH or image.height > MAX_IMAGE_HEIGHT:
+            raise Exception(
+                f"Image {file} is too big ({image.width}x{image.height} vs. {MAX_IMAGE_WIDTH}x{MAX_IMAGE_HEIGHT})"
+            )
         return image.width, image.height, image.data_as_carray()
 
     def _iconIsSupported(self, filename):
@@ -121,6 +137,13 @@ class Main(App):
             ICONS_TEMPLATE_C_HEADER.format(assets_filename=self.args.filename)
         )
         icons = []
+        paths = []
+        if self.args.filename == "assets_icons":
+            symbols = ""
+        else:
+            symbols = (
+                pathlib.Path(__file__).parent / "../targets/f7/api_symbols.csv"
+            ).read_text()
         # Traverse icons tree, append image data to source file
         for dirpath, dirnames, filenames in os.walk(self.args.input_directory):
             self.logger.debug(f"Processing directory {dirpath}")
@@ -129,8 +152,13 @@ class Main(App):
             if not filenames:
                 continue
             if "frame_rate" in filenames:
-                self.logger.debug(f"Folder contains animation")
+                self.logger.debug("Folder contains animation")
                 icon_name = "A_" + os.path.split(dirpath)[1].replace("-", "_")
+                if f"Variable,+,{icon_name},Icon," in symbols:
+                    self.logger.warning(
+                        f"{self.args.filename}: ignoring duplicate icon {icon_name}"
+                    )
+                    continue
                 width = height = None
                 frame_count = 0
                 frame_rate = 0
@@ -165,6 +193,8 @@ class Main(App):
                 )
                 icons_c.write("\n")
                 icons.append((icon_name, width, height, frame_rate, frame_count))
+                p = dirpath.removeprefix(self.args.input_directory)[1:]
+                paths.append((icon_name, p.replace("\\", "/")))
             else:
                 # process icons
                 for filename in filenames:
@@ -174,6 +204,11 @@ class Main(App):
                     icon_name = "I_" + "_".join(filename.split(".")[:-1]).replace(
                         "-", "_"
                     )
+                    if f"Variable,+,{icon_name},Icon," in symbols:
+                        self.logger.warning(
+                            f"{self.args.filename}: ignoring duplicate icon {icon_name}"
+                        )
+                        continue
                     fullfilename = os.path.join(dirpath, filename)
                     width, height, data = self._icon2header(fullfilename)
                     frame_name = f"_{icon_name}_0"
@@ -187,8 +222,10 @@ class Main(App):
                     )
                     icons_c.write("\n")
                     icons.append((icon_name, width, height, 0, 1))
+                    p = fullfilename.removeprefix(self.args.input_directory)[1:]
+                    paths.append((icon_name, p.replace("\\", "/").rsplit(".", 1)[0]))
         # Create array of images:
-        self.logger.debug(f"Finalizing source file")
+        self.logger.debug("Finalizing source file")
         for name, width, height, frame_rate, frame_count in icons:
             icons_c.write(
                 ICONS_TEMPLATE_C_ICONS.format(
@@ -199,11 +236,25 @@ class Main(App):
                     frame_count=frame_count,
                 )
             )
-        icons_c.write("\n")
+        if self.args.filename == "assets_icons":
+            icons_c.write(
+                """
+const IconPath ICON_PATHS[] = {
+#ifndef FURI_RAM_EXEC
+"""
+            )
+            for name, path in paths:
+                icons_c.write(f'    {{&{name}, "{path}"}},\n')
+            icons_c.write(
+                """#endif
+};
+const size_t ICON_PATHS_COUNT = COUNT_OF(ICON_PATHS);
+"""
+            )
         icons_c.close()
 
         # Create Public Header
-        self.logger.debug(f"Creating header")
+        self.logger.debug("Creating header")
         icons_h = open(
             os.path.join(self.args.output_directory, f"{self.args.filename}.h"),
             "w",
@@ -212,8 +263,22 @@ class Main(App):
         icons_h.write(ICONS_TEMPLATE_H_HEADER)
         for name, width, height, frame_rate, frame_count in icons:
             icons_h.write(ICONS_TEMPLATE_H_ICON_NAME.format(name=name))
+        if self.args.filename == "assets_icons":
+            icons_h.write(
+                """
+typedef struct {
+    const Icon* icon;
+    const char* path;
+} IconPath;
+
+extern const IconPath ICON_PATHS[];
+extern const size_t ICON_PATHS_COUNT;
+"""
+            )
+        else:
+            icons_h.write("#include <assets_icons.h>\n")
         icons_h.close()
-        self.logger.debug(f"Done")
+        self.logger.debug("Done")
         return 0
 
     def manifest(self):
@@ -223,6 +288,7 @@ class Main(App):
         if not os.path.isdir(directory_path):
             self.logger.error(f'"{directory_path}" is not a directory')
             exit(255)
+
         manifest_file = os.path.join(directory_path, "Manifest")
         old_manifest = Manifest()
         if os.path.exists(manifest_file):
@@ -234,60 +300,71 @@ class Main(App):
         new_manifest = Manifest(self.args.timestamp)
         new_manifest.create(directory_path)
 
-        self.logger.info(f"Comparing new manifest with existing")
+        self.logger.info("Comparing new manifest with existing")
         only_in_old, changed, only_in_new = Manifest.compare(old_manifest, new_manifest)
         for record in only_in_old:
-            self.logger.info(f"Only in old: {record}")
+            self.logger.debug(f"Only in old: {record}")
         for record in changed:
             self.logger.info(f"Changed: {record}")
         for record in only_in_new:
-            self.logger.info(f"Only in new: {record}")
+            self.logger.debug(f"Only in new: {record}")
         if any((only_in_old, changed, only_in_new)):
-            self.logger.warning("Manifests are different, updating")
+            self.logger.info(
+                f"Manifest updated ({len(only_in_new)} new, {len(only_in_old)} removed, {len(changed)} changed)"
+            )
             new_manifest.save(manifest_file)
         else:
             self.logger.info("Manifest is up-to-date!")
 
-        self.logger.info("Packing custom asset packs")
-        root_dir = pathlib.Path(__file__).absolute().parent.parent
-        asset_packer.pack(
-            root_dir / "assets/dolphin/custom",
-            root_dir / f"assets/resources/dolphin_custom",
-            self.logger.info,
-        )
-
-        self.logger.info(f"Complete")
+        self.logger.info("Complete")
 
         return 0
 
     def copro(self):
         from flipper.assets.copro import Copro
 
-        self.logger.info(f"Bundling coprocessor binaries")
-        copro = Copro(self.args.mcu)
-        self.logger.info(f"Loading CUBE info")
-        copro.loadCubeInfo(self.args.cube_dir, self.args.cube_ver)
-        self.logger.info(f"Bundling")
-        copro.bundle(
-            self.args.output_dir,
-            self.args.stack_file,
-            self.args.stack_type,
-            self.args.stack_addr,
-        )
-        self.logger.info(f"Complete")
+        self.logger.info("Bundling coprocessor binaries")
+        copro = Copro()
+        try:
+            self.logger.info("Loading CUBE info")
+            copro.loadCubeInfo(self.args.cube_dir, self.args.cube_ver)
+            self.logger.info("Bundling")
+            copro.bundle(
+                self.args.output_dir,
+                self.args.stack_file,
+                self.args.stack_type,
+                self.args.stack_addr,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to bundle: {e}")
+            return 1
+        self.logger.info("Complete")
 
         return 0
 
     def dolphin(self):
         from flipper.assets.dolphin import Dolphin
 
-        self.logger.info(f"Processing Dolphin sources")
+        self.logger.info("Processing Dolphin sources")
         dolphin = Dolphin()
-        self.logger.info(f"Loading data")
+        self.logger.info("Loading data")
         dolphin.load(self.args.input_directory)
-        self.logger.info(f"Packing")
+        self.logger.info("Packing")
         dolphin.pack(self.args.output_directory, self.args.symbol_name)
-        self.logger.info(f"Complete")
+        self.logger.info("Complete")
+
+        return 0
+
+    def packs(self):
+        import asset_packer
+
+        self.logger.info("Packing custom asset packs")
+        asset_packer.pack(
+            self.args.input_directory,
+            self.args.output_directory,
+            self.logger.info,
+        )
+        self.logger.info("Finished custom asset packs")
 
         return 0
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 
-from flipper.app import App
-from flipper.utils.fff import FlipperFormatFile
-from flipper.assets.coprobin import CoproBinary, get_stack_type
-from flipper.assets.obdata import OptionBytesData, ObReferenceValues
-from os.path import basename, join, exists
+import math
 import os
 import shutil
-import zlib
 import tarfile
-import math
+import zlib
+from os.path import exists, join
+import pathlib
 
+from flipper.app import App
+from flipper.assets.coprobin import CoproBinary, get_stack_type
+from flipper.assets.obdata import ObReferenceValues, OptionBytesData
+from flipper.utils.fff import FlipperFormatFile
 from slideshow import Main as SlideshowMain
 
 
@@ -73,6 +74,9 @@ class Main(App):
         self.parser_generate.add_argument(
             "--I-understand-what-I-am-doing", dest="disclaimer", required=False
         )
+        self.parser_generate.add_argument(
+            "--stackversion", dest="stack_version", required=False, default=""
+        )
 
         self.parser_generate.set_defaults(func=self.generate)
 
@@ -93,6 +97,13 @@ class Main(App):
             if not self.args.radiotype:
                 raise ValueError("Missing --radiotype")
             radio_meta = CoproBinary(self.args.radiobin)
+            if self.args.stack_version:
+                actual_stack_version_str = f"{radio_meta.img_sig.version_major}.{radio_meta.img_sig.version_minor}.{radio_meta.img_sig.version_sub}"
+                if actual_stack_version_str != self.args.stack_version:
+                    self.logger.error(
+                        f"Stack version mismatch: expected {self.args.stack_version}, actual {actual_stack_version_str}"
+                    )
+                    return 1
             radio_version = self.copro_version_as_int(radio_meta, self.args.radiotype)
             if (
                 get_stack_type(self.args.radiotype) not in self.WHITELISTED_STACK_TYPES
@@ -114,6 +125,13 @@ class Main(App):
         if not exists(self.args.directory):
             os.makedirs(self.args.directory)
 
+        stage_size = os.stat(self.args.stage).st_size
+        max_stage_size = 131072  # 2 * MAX_READ in src/update.c
+        if stage_size > max_stage_size:
+            self.logger.warn(
+                f"RAM {stage_basename} size too big ({stage_size} > {max_stage_size} bytes)"
+            )
+            return 2
         shutil.copyfile(self.args.stage, join(self.args.directory, stage_basename))
         dfu_size = 0
         if self.args.dfu:
@@ -125,6 +143,17 @@ class Main(App):
             )
         if self.args.resources:
             resources_basename = self.RESOURCE_FILE_NAME
+            SlideshowMain(no_exit=True)(
+                [
+                    "-i",
+                    str(
+                        pathlib.Path(self.args.resources)
+                        / "../../../assets/slideshow/xfwfirstboot"
+                    ),
+                    "-o",
+                    str(pathlib.Path(self.args.resources) / "dolphin/xfwfirstboot.bin"),
+                ]
+            )
             if not self.package_resources(
                 self.args.resources, join(self.args.directory, resources_basename)
             ):
@@ -137,6 +166,14 @@ class Main(App):
                 return 2
 
         if self.args.splash:
+            SlideshowMain(no_exit=True)(
+                [
+                    "-i",
+                    str(pathlib.Path(self.args.splash).parent / "xfwfirstboot"),
+                    "-o",
+                    join(self.args.directory, "xfwfirstboot.bin"),
+                ]
+            )
             splash_args = [
                 "-i",
                 self.args.splash,
@@ -211,6 +248,9 @@ class Main(App):
                 f"Cannot package resource: name '{tarinfo.name}' too long"
             )
             raise ValueError("Resource name too long")
+        tarinfo.gid = tarinfo.uid = 0
+        tarinfo.mtime = 0
+        tarinfo.uname = tarinfo.gname = "furippa"
         return tarinfo
 
     def package_resources(self, srcdir: str, dst_name: str):
@@ -267,9 +307,9 @@ class Main(App):
 
     @staticmethod
     def batch(iterable, n=1):
-        l = len(iterable)
-        for ndx in range(0, l, n):
-            yield iterable[ndx : min(ndx + n, l)]
+        iterable_len = len(iterable)
+        for ndx in range(0, iterable_len, n):
+            yield iterable[ndx : min(ndx + n, iterable_len)]
 
 
 if __name__ == "__main__":

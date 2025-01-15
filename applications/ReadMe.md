@@ -26,7 +26,6 @@ Applications for main Flipper menu.
 
 - `archive`             - Archive and file manager 
 - `bad_kb`              - Bad KB application
-- `fap_loader`          - External applications loader
 - `gpio`                - GPIO application: includes USART bridge and GPIO control
 - `ibutton`             - iButton application, onewire keys and more
 - `infrared`            - Infrared application, controls your IR devices
@@ -36,22 +35,26 @@ Applications for main Flipper menu.
 - `u2f`                 - U2F Application
 
 
-## plugins
+## External
 
-Extra apps for Plugins & App Loader menus.
+External applications deployed to SD Card
 
-- `bt_hid_app`          - BT Remote controller
+- `clock`               - Clock application
+- `dap_link`            - DAP Link OnChip debugger
+- `hid_app`             - USB/BT Remote controller
 - `music_player`        - Music player app (demo)
-- `picopass`            - Picopass tool
+- `nfc_magic`           - NFC MFC Magic card application
+- `picopass`            - Picopass reader / writer
+- `signal_generator`    - Signal generator app: PWM and clock generator
 - `snake_game`          - Snake game application
-
+- `spi_mem_manager`     - SPI Memory reader / flasher
+- `weather_station`     - SubGHz weather station
 
 ## services
 
 Background services providing system APIs to applications.
 
 - `applications.h`      - Firmware application list header
-
 - `bt`                  - BLE service and application
 - `cli`                 - Console service and API
 - `crypto`              - Crypto cli tools
@@ -83,7 +86,10 @@ Small applications providing configuration for basic firmware and its services.
 
 ## system
 
-Utility apps not visible in other menus.
+Utility apps not visible in other menus, plus few external apps pre-packaged with the firmware.
 
+- `hid_app`             - BLE & USB HID remote
+- `js_app`              - JS engine runner
+- `snake_game`          - Snake game
 - `storage_move_to_sd`  - Data migration tool for internal storage
 - `updater`             - Update service & application

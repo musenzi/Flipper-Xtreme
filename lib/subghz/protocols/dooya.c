@@ -308,7 +308,7 @@ void subghz_protocol_decoder_dooya_feed(void* context, bool level, uint32_t dura
  * Analysis of received data
  * @param instance Pointer to a SubGhzBlockGeneric* instance
  */
-static void subghz_protocol_somfy_telis_check_remote_controller(SubGhzBlockGeneric* instance) {
+static void subghz_protocol_dooya_check_remote_controller(SubGhzBlockGeneric* instance) {
     /*
  * 																serial       s/m  ch      key   	
  * long press down   X * E1DC030533, 40b 			111000011101110000000011 0000 0101 0011 0011
@@ -347,10 +347,10 @@ static void subghz_protocol_somfy_telis_check_remote_controller(SubGhzBlockGener
     instance->btn = instance->data & 0xFF;
 }
 
-uint8_t subghz_protocol_decoder_dooya_get_hash_data(void* context) {
+uint32_t subghz_protocol_decoder_dooya_get_hash_data(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderDooya* instance = context;
-    return subghz_protocol_blocks_get_hash_data(
+    return subghz_protocol_blocks_get_hash_data_long(
         &instance->decoder, (instance->decoder.decode_count_bit / 8) + 1);
 }
 
@@ -416,7 +416,7 @@ void subghz_protocol_decoder_dooya_get_string(void* context, FuriString* output)
     furi_assert(context);
     SubGhzProtocolDecoderDooya* instance = context;
 
-    subghz_protocol_somfy_telis_check_remote_controller(&instance->generic);
+    subghz_protocol_dooya_check_remote_controller(&instance->generic);
 
     furi_string_cat_printf(
         output,

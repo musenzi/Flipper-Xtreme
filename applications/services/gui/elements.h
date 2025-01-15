@@ -65,6 +65,23 @@ void elements_scrollbar_pos(
     uint16_t pos,
     uint16_t total);
 
+/** Draw horizontal scrollbar on canvas at specific position.
+ *
+ * @param   canvas  Canvas instance
+ * @param   x       scrollbar position on X axis
+ * @param   y       scrollbar position on Y axis
+ * @param   width   scrollbar width
+ * @param   pos     current element
+ * @param   total   total elements
+ */
+void elements_scrollbar_horizontal(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    uint16_t pos,
+    uint16_t total);
+
 /** Draw scrollbar on canvas.
  * @note    width 3px, height equal to canvas height
  *
@@ -188,8 +205,7 @@ void elements_bubble(Canvas* canvas, uint8_t x, uint8_t y, uint8_t width, uint8_
  * @param   canvas      Canvas instance
  * @param   x           left x coordinates
  * @param   y           top y coordinate
- * @param   width       bubble width
- * @param   height      bubble height
+ * @param   text        text to display
  * @param   horizontal  horizontal aligning
  * @param   vertical    aligning
  */
@@ -218,7 +234,17 @@ void elements_string_fit_width(Canvas* canvas, FuriString* string, uint8_t width
  * @param      string    The string
  * @param[in]  scroll    The scroll counter: 0 - no scroll, any other number - scroll. Just count up, everything else will be calculated on the inside.
  * @param[in]  ellipsis  The ellipsis flag: true to add ellipse
+ * @param[in]  centered  The centered flag: true to center text on x and y
  */
+void elements_scrollable_text_line_str(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    const char* string,
+    size_t scroll,
+    bool ellipsis,
+    bool centered);
 void elements_scrollable_text_line(
     Canvas* canvas,
     uint8_t x,
@@ -227,6 +253,15 @@ void elements_scrollable_text_line(
     FuriString* string,
     size_t scroll,
     bool ellipsis);
+void elements_scrollable_text_line_centered(
+    Canvas* canvas,
+    uint8_t x,
+    uint8_t y,
+    uint8_t width,
+    FuriString* string,
+    size_t scroll,
+    bool ellipsis,
+    bool centered);
 
 /** Draw text box element
  *

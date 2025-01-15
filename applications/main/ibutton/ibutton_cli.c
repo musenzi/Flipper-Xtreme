@@ -4,25 +4,20 @@
 #include <cli/cli.h>
 #include <toolbox/args.h>
 
-#include <one_wire/one_wire_host.h>
-
-#include <one_wire/ibutton/ibutton_key.h>
-#include <one_wire/ibutton/ibutton_worker.h>
-#include <one_wire/ibutton/ibutton_protocols.h>
+#include <ibutton/ibutton_key.h>
+#include <ibutton/ibutton_worker.h>
+#include <ibutton/ibutton_protocols.h>
 
 static void ibutton_cli(Cli* cli, FuriString* args, void* context);
-static void onewire_cli(Cli* cli, FuriString* args, void* context);
 
 // app cli function
 void ibutton_on_system_start() {
 #ifdef SRV_CLI
     Cli* cli = furi_record_open(RECORD_CLI);
     cli_add_command(cli, "ikey", CliCommandFlagDefault, ibutton_cli, cli);
-    cli_add_command(cli, "onewire", CliCommandFlagDefault, onewire_cli, cli);
     furi_record_close(RECORD_CLI);
 #else
     UNUSED(ibutton_cli);
-    UNUSED(onewire_cli);
 #endif
 }
 
@@ -36,7 +31,7 @@ static void ibutton_cli_print_usage() {
     printf("\tCyfral (2 bytes key_data)\r\n");
     printf("\tMetakom (4 bytes key_data), must contain correct parity\r\n");
     printf("\t<key_data> are hex-formatted\r\n");
-};
+}
 
 static bool ibutton_cli_parse_key(iButtonProtocols* protocols, iButtonKey* key, FuriString* args) {
     bool result = false;
@@ -129,7 +124,7 @@ static void ibutton_cli_read(Cli* cli) {
     ibutton_protocols_free(protocols);
 
     furi_event_flag_free(event);
-};
+}
 
 typedef struct {
     FuriEventFlag* event;
@@ -221,7 +216,7 @@ void ibutton_cli_emulate(Cli* cli, FuriString* args) {
 
         while(!cli_cmd_interrupt_received(cli)) {
             furi_delay_ms(100);
-        };
+        }
 
     } while(false);
 
@@ -231,7 +226,7 @@ void ibutton_cli_emulate(Cli* cli, FuriString* args) {
     ibutton_key_free(key);
     ibutton_worker_free(worker);
     ibutton_protocols_free(protocols);
-};
+}
 
 void ibutton_cli(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
@@ -253,59 +248,6 @@ void ibutton_cli(Cli* cli, FuriString* args, void* context) {
         ibutton_cli_emulate(cli, args);
     } else {
         ibutton_cli_print_usage();
-    }
-
-    furi_string_free(cmd);
-}
-
-static void onewire_cli_print_usage() {
-    printf("Usage:\r\n");
-    printf("onewire search\r\n");
-};
-
-static void onewire_cli_search(Cli* cli) {
-    UNUSED(cli);
-    OneWireHost* onewire = onewire_host_alloc(&ibutton_gpio);
-    uint8_t address[8];
-    bool done = false;
-
-    printf("Search started\r\n");
-
-    onewire_host_start(onewire);
-    furi_hal_power_enable_otg();
-
-    while(!done) {
-        if(onewire_host_search(onewire, address, OneWireHostSearchModeNormal) != 1) {
-            printf("Search finished\r\n");
-            onewire_host_reset_search(onewire);
-            done = true;
-        } else {
-            printf("Found: ");
-            for(uint8_t i = 0; i < 8; i++) {
-                printf("%02X", address[i]);
-            }
-            printf("\r\n");
-        }
-        furi_delay_ms(100);
-    }
-
-    furi_hal_power_disable_otg();
-    onewire_host_free(onewire);
-}
-
-void onewire_cli(Cli* cli, FuriString* args, void* context) {
-    UNUSED(context);
-    FuriString* cmd;
-    cmd = furi_string_alloc();
-
-    if(!args_read_string_and_trim(args, cmd)) {
-        furi_string_free(cmd);
-        onewire_cli_print_usage();
-        return;
-    }
-
-    if(furi_string_cmp_str(cmd, "search") == 0) {
-        onewire_cli_search(cli);
     }
 
     furi_string_free(cmd);

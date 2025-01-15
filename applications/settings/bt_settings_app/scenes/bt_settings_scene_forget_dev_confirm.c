@@ -1,6 +1,6 @@
 #include "../bt_settings_app.h"
 #include <furi_hal_bt.h>
-#include <applications/main/bad_kb/bad_kb_app_i.h>
+#include <applications/main/bad_kb/bad_kb_paths.h>
 
 void bt_settings_scene_forget_dev_confirm_dialog_callback(DialogExResult result, void* context) {
     furi_assert(context);
@@ -30,11 +30,20 @@ bool bt_settings_scene_forget_dev_confirm_on_event(void* context, SceneManagerEv
         if(event.event == DialogExResultLeft) {
             consumed = scene_manager_previous_scene(app->scene_manager);
         } else if(event.event == DialogExResultRight) {
-            bt_forget_bonded_devices(app->bt);
-            // also removes keys of badkb bonded devices
-            bt_keys_storage_set_storage_path(app->bt, BAD_KB_APP_PATH_BOUND_KEYS_FILE);
-            bt_forget_bonded_devices(app->bt);
             bt_keys_storage_set_default_path(app->bt);
+            bt_forget_bonded_devices(app->bt);
+
+            // also remove keys for apps
+            const char* keys_paths[] = {
+                BAD_KB_KEYS_PATH,
+                EXT_PATH("apps_data/hid_ble/.bt_hid.keys"),
+                EXT_PATH("apps_data/totp/.bt_hid.keys"),
+            };
+            Storage* storage = furi_record_open(RECORD_STORAGE);
+            for(size_t i = 0; i < COUNT_OF(keys_paths); i++) {
+                storage_simply_remove(storage, keys_paths[i]);
+            }
+            furi_record_close(RECORD_STORAGE);
 
             scene_manager_next_scene(app->scene_manager, BtSettingsAppSceneForgetDevSuccess);
             consumed = true;

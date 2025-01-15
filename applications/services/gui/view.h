@@ -34,44 +34,52 @@ typedef enum {
 typedef struct View View;
 
 /** View Draw callback
- * @param      canvas,      pointer to canvas
- * @param      view_model,  pointer to context
+ * @param      canvas      pointer to canvas
+ * @param      model       pointer to model
  * @warning    called from GUI thread
  */
 typedef void (*ViewDrawCallback)(Canvas* canvas, void* model);
 
 /** View Input callback
- * @param      event,    pointer to input event data
- * @param      context,  pointer to context
+ * @param      event    pointer to input event data
+ * @param      context  pointer to context
  * @return     true if event handled, false if event ignored
  * @warning    called from GUI thread
  */
 typedef bool (*ViewInputCallback)(InputEvent* event, void* context);
 
-/** View Custom callback
- * @param      event,    number of custom event
+/** View Ascii callback
+ * @param      event,    pointer to ascii event data
  * @param      context,  pointer to context
+ * @return     true if event handled, false if event ignored
+ * @warning    called from GUI thread
+ */
+typedef bool (*ViewAsciiCallback)(AsciiEvent* event, void* context);
+
+/** View Custom callback
+ * @param      event    number of custom event
+ * @param      context  pointer to context
  * @return     true if event handled, false if event ignored
  */
 typedef bool (*ViewCustomCallback)(uint32_t event, void* context);
 
 /** View navigation callback
- * @param      context,  pointer to context
+ * @param      context  pointer to context
  * @return     next view id
  * @warning    called from GUI thread
  */
 typedef uint32_t (*ViewNavigationCallback)(void* context);
 
 /** View callback
- * @param      context,  pointer to context
+ * @param      context  pointer to context
  * @warning    called from GUI thread
  */
 typedef void (*ViewCallback)(void* context);
 
 /** View Update Callback Called upon model change, need to be propagated to GUI
  * throw ViewPort update
- * @param      view,     pointer to view
- * @param      context,  pointer to context
+ * @param      view     pointer to view
+ * @param      context  pointer to context
  * @warning    called from GUI thread
  */
 typedef void (*ViewUpdateCallback)(View* view, void* context);
@@ -121,6 +129,13 @@ void view_set_draw_callback(View* view, ViewDrawCallback callback);
  * @param      callback  input callback
  */
 void view_set_input_callback(View* view, ViewInputCallback callback);
+
+/** Set View Ascii callback
+ *
+ * @param      view      View instance
+ * @param      callback  ascii callback
+ */
+void view_set_ascii_callback(View* view, ViewAsciiCallback callback);
 
 /** Set View Custom callback
  *

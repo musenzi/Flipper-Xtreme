@@ -2,24 +2,25 @@
 #include <stdint.h>
 #include <furi.h>
 #include <furi_hal.h>
-#include <portmacro.h>
 #include <dolphin/dolphin.h>
 #include <power/power_service/power.h>
 #include <storage/storage.h>
 #include <assets_icons.h>
+#include <assets_dolphin_internal.h>
 
 #include "views/bubble_animation_view.h"
 #include "views/one_shot_animation_view.h"
 #include "animation_storage.h"
 #include "animation_manager.h"
 
-#include "xtreme/assets.h"
+#include <xtreme/xtreme.h>
 
 #define TAG "AnimationManager"
 
-#define HARDCODED_ANIMATION_NAME "thank_you_128x64"
+#define HARDCODED_ANIMATION_NAME "L1_AnimationError_128x64"
 #define NO_SD_ANIMATION_NAME "L1_NoSd_128x49"
 #define BAD_BATTERY_ANIMATION_NAME "L1_BadBattery_128x47"
+#define CREDITS_ANIMATION_NAME "Credits_128x64"
 
 #define NO_DB_ANIMATION_NAME "L0_NoDb_128x51"
 #define BAD_SD_ANIMATION_NAME "L0_SdBad_128x51"
@@ -54,6 +55,7 @@ struct AnimationManager {
     FuriString* freezed_animation_name;
     int32_t freezed_animation_time_left;
     ViewStack* view_stack;
+    bool _dummy_mode; // Unused, kept for compatibility
 };
 
 static StorageAnimation*
@@ -146,7 +148,7 @@ void animation_manager_check_blocking_process(AnimationManager* animation_manage
             const StorageAnimationManifestInfo* manifest_info =
                 animation_storage_get_meta(animation_manager->current_animation);
             bool valid = animation_manager_is_valid_idle_animation(
-                manifest_info, &stats, XTREME_SETTINGS()->unlock_anims);
+                manifest_info, &stats, xtreme_settings.unlock_anims);
 
             if(!valid) {
                 animation_manager_start_new_idle(animation_manager);
@@ -201,9 +203,8 @@ static void animation_manager_start_new_idle(AnimationManager* animation_manager
     const BubbleAnimation* bubble_animation =
         animation_storage_get_bubble_animation(animation_manager->current_animation);
     animation_manager->state = AnimationManagerStateIdle;
-    XtremeSettings* xtreme_settings = XTREME_SETTINGS();
-    int32_t duration = (xtreme_settings->cycle_anims == 0) ? (bubble_animation->duration) :
-                                                             (xtreme_settings->cycle_anims);
+    int32_t duration = (xtreme_settings.cycle_anims == 0) ? (bubble_animation->duration) :
+                                                            (xtreme_settings.cycle_anims);
     furi_timer_start(
         animation_manager->idle_animation_timer, (duration > 0) ? (duration * 1000) : 0);
 }
@@ -372,10 +373,10 @@ static bool animation_manager_is_valid_idle_animation(
 
 static StorageAnimation*
     animation_manager_select_idle_animation(AnimationManager* animation_manager) {
-    // const char* avoid_animation = NULL;
-    // if(animation_manager->current_animation) {
-    //     avoid_animation = animation_storage_get_meta(animation_manager->current_animation)->name;
-    // }
+    const char* avoid_animation = NULL;
+    if(animation_manager->current_animation) {
+        avoid_animation = animation_storage_get_meta(animation_manager->current_animation)->name;
+    }
     UNUSED(animation_manager);
 
     StorageAnimationList_t animation_list;
@@ -385,33 +386,54 @@ static StorageAnimation*
     Dolphin* dolphin = furi_record_open(RECORD_DOLPHIN);
     DolphinStats stats = dolphin_stats(dolphin);
     furi_record_close(RECORD_DOLPHIN);
-    // avoid_animation = StorageAnimationList_size(animation_list) > 1 ? avoid_animation : NULL;
     uint32_t whole_weight = 0;
 
+    // Filter valid animations
+    bool skip_credits = !xtreme_settings.credits_anim && xtreme_settings.asset_pack[0] == '\0';
+    bool unlock = xtreme_settings.unlock_anims;
     StorageAnimationList_it_t it;
-    bool unlock = XTREME_SETTINGS()->unlock_anims;
     for(StorageAnimationList_it(it, animation_list); !StorageAnimationList_end_p(it);) {
         StorageAnimation* storage_animation = *StorageAnimationList_ref(it);
         const StorageAnimationManifestInfo* manifest_info =
             animation_storage_get_meta(storage_animation);
         bool valid = animation_manager_is_valid_idle_animation(manifest_info, &stats, unlock);
 
-        // Avoid repeating animation
-        // Bad / empty manifests can crash flipper and (very rarely) require DFU
-        // Need better solution, disabled for now
-        // if(avoid_animation != NULL) {
-        //     if(strcmp(manifest_info->name, avoid_animation) == 0) {
-        //         valid = false;
-        //     }
-        // }
+        if(strcmp(manifest_info->name, HARDCODED_ANIMATION_NAME) == 0) {
+            // Dont pick error anim randomly
+            valid = false;
+        } else if(skip_credits && strcmp(manifest_info->name, CREDITS_ANIMATION_NAME) == 0) {
+            // Dont pick credits anim if disabled
+            valid = false;
+        }
 
         if(valid) {
-            whole_weight += manifest_info->weight;
             StorageAnimationList_next(it);
         } else {
             animation_storage_free_storage_animation(&storage_animation);
             /* remove and increase iterator */
             StorageAnimationList_remove(animation_list, it);
+        }
+    }
+
+    if(StorageAnimationList_size(animation_list) == 1) {
+        // One valid anim, dont skip current anim (current = only ext one)
+        avoid_animation = NULL;
+    }
+
+    // Avoid repeating current animation and calculate weights
+    for(StorageAnimationList_it(it, animation_list); !StorageAnimationList_end_p(it);) {
+        StorageAnimation* storage_animation = *StorageAnimationList_ref(it);
+        const StorageAnimationManifestInfo* manifest_info =
+            animation_storage_get_meta(storage_animation);
+
+        if(avoid_animation && strcmp(manifest_info->name, avoid_animation) == 0) {
+            // Avoid repeating same animation twice
+            animation_storage_free_storage_animation(&storage_animation);
+            /* remove and increase iterator */
+            StorageAnimationList_remove(animation_list, it);
+        } else {
+            whole_weight += manifest_info->weight;
+            StorageAnimationList_next(it);
         }
     }
 
@@ -438,7 +460,10 @@ static StorageAnimation*
     StorageAnimationList_clear(animation_list);
 
     /* cache animation, if failed - choose reliable animation */
-    if(!animation_storage_get_bubble_animation(selected)) {
+    if(selected == NULL) {
+        FURI_LOG_E(TAG, "Can't find valid animation in manifest");
+        selected = animation_storage_find_animation(HARDCODED_ANIMATION_NAME);
+    } else if(!animation_storage_get_bubble_animation(selected)) {
         const char* name = animation_storage_get_meta(selected)->name;
         FURI_LOG_E(TAG, "Can't upload animation described in manifest: \'%s\'", name);
         animation_storage_free_storage_animation(&selected);
@@ -468,13 +493,13 @@ void animation_manager_unload_and_stall_animation(AnimationManager* animation_ma
         animation_manager->state = AnimationManagerStateFreezedIdle;
 
         animation_manager->freezed_animation_time_left =
-            xTimerGetExpiryTime(animation_manager->idle_animation_timer) - xTaskGetTickCount();
+            furi_timer_get_expire_time(animation_manager->idle_animation_timer) - furi_get_tick();
         if(animation_manager->freezed_animation_time_left < 0) {
             animation_manager->freezed_animation_time_left = 0;
         }
         furi_timer_stop(animation_manager->idle_animation_timer);
     } else {
-        furi_assert(0);
+        furi_crash();
     }
 
     FURI_LOG_I(
@@ -521,8 +546,9 @@ void animation_manager_load_and_continue_animation(AnimationManager* animation_m
                 const StorageAnimationManifestInfo* manifest_info =
                     animation_storage_get_meta(restore_animation);
                 bool valid = animation_manager_is_valid_idle_animation(
-                    manifest_info, &stats, XTREME_SETTINGS()->unlock_anims);
-                if(valid) {
+                    manifest_info, &stats, xtreme_settings.unlock_anims);
+                // Restore only if anim is valid and not the error anim
+                if(valid && strcmp(manifest_info->name, HARDCODED_ANIMATION_NAME) != 0) {
                     animation_manager_replace_current_animation(
                         animation_manager, restore_animation);
                     animation_manager->state = AnimationManagerStateIdle;
@@ -535,10 +561,9 @@ void animation_manager_load_and_continue_animation(AnimationManager* animation_m
                         const BubbleAnimation* bubble_animation =
                             animation_storage_get_bubble_animation(
                                 animation_manager->current_animation);
-                        XtremeSettings* xtreme_settings = XTREME_SETTINGS();
-                        int32_t duration = (xtreme_settings->cycle_anims == 0) ?
+                        int32_t duration = (xtreme_settings.cycle_anims == 0) ?
                                                (bubble_animation->duration) :
-                                               (xtreme_settings->cycle_anims);
+                                               (xtreme_settings.cycle_anims);
                         furi_timer_start(
                             animation_manager->idle_animation_timer,
                             (duration > 0) ? (duration * 1000) : 0);
@@ -553,7 +578,7 @@ void animation_manager_load_and_continue_animation(AnimationManager* animation_m
         }
     } else {
         /* Unknown state is an error. But not in release version.*/
-        furi_assert(0);
+        furi_crash();
     }
 
     /* if can't restore previous animation - select new */
@@ -581,8 +606,7 @@ static void animation_manager_switch_to_one_shot_view(AnimationManager* animatio
     View* next_view = one_shot_view_get_view(animation_manager->one_shot_view);
     view_stack_remove_view(animation_manager->view_stack, prev_view);
     view_stack_add_view(animation_manager->view_stack, next_view);
-    one_shot_view_start_animation(
-        animation_manager->one_shot_view, XTREME_ASSETS()->A_Levelup_128x64);
+    one_shot_view_start_animation(animation_manager->one_shot_view, &A_Levelup_128x64);
 }
 
 static void animation_manager_switch_to_animation_view(AnimationManager* animation_manager) {

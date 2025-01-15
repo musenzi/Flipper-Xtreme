@@ -2,7 +2,6 @@
 #include <furi_hal.h>
 #include "notification.h"
 #include "notification_messages.h"
-#include "notification_settings_filename.h"
 
 #define NOTIFICATION_LED_COUNT 3
 #define NOTIFICATION_EVENT_COMPLETE 0x00000001U
@@ -32,8 +31,10 @@ typedef struct {
     Light light;
 } NotificationLedLayer;
 
-#define NOTIFICATION_SETTINGS_VERSION 0x01
-#define NOTIFICATION_SETTINGS_PATH INT_PATH(NOTIFICATION_SETTINGS_FILE_NAME)
+#define NOTIFICATION_SETTINGS_VERSION 0x02
+#define NOTIFICATION_SETTINGS_MAGIC 0x16
+#define NOTIFICATION_SETTINGS_OLD_PATH INT_PATH(".notification.settings")
+#define NOTIFICATION_SETTINGS_PATH CFG_PATH("notification.settings")
 
 typedef struct {
     uint8_t version;
@@ -41,12 +42,14 @@ typedef struct {
     float led_brightness;
     float speaker_volume;
     uint32_t display_off_delay_ms;
+    int8_t contrast;
     bool vibro_on;
 } NotificationSettings;
 
 struct NotificationApp {
     FuriMessageQueue* queue;
     FuriPubSub* event_record;
+    FuriPubSub* ascii_record;
     FuriTimer* display_timer;
 
     NotificationLedLayer display;
@@ -56,4 +59,12 @@ struct NotificationApp {
     NotificationSettings settings;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void notification_message_save_settings(NotificationApp* app);
+
+#ifdef __cplusplus
+}
+#endif

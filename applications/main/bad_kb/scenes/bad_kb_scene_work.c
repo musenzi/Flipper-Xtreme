@@ -1,4 +1,4 @@
-#include "../bad_kb_script.h"
+#include "../helpers/ducky_script.h"
 #include "../bad_kb_app_i.h"
 #include "../views/bad_kb_view.h"
 #include <furi_hal.h>
@@ -17,15 +17,14 @@ bool bad_kb_scene_work_on_event(void* context, SceneManagerEvent event) {
     if(event.type == SceneManagerEventTypeCustom) {
         if(event.event == InputKeyLeft) {
             if(bad_kb_is_idle_state(app->bad_kb_view)) {
-                if(app->is_bt) {
-                    scene_manager_next_scene(app->scene_manager, BadKbSceneConfigBt);
-                } else {
-                    scene_manager_next_scene(app->scene_manager, BadKbSceneConfigUsb);
-                }
+                scene_manager_next_scene(app->scene_manager, BadKbSceneConfig);
             }
             consumed = true;
         } else if(event.event == InputKeyOk) {
-            bad_kb_script_toggle(app->bad_kb_script);
+            bad_kb_script_start_stop(app->bad_kb_script);
+            consumed = true;
+        } else if(event.event == InputKeyRight) {
+            bad_kb_script_pause_resume(app->bad_kb_script);
             consumed = true;
         }
     } else if(event.type == SceneManagerEventTypeTick) {

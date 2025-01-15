@@ -160,7 +160,7 @@ static LFSData* storage_int_lfs_data_alloc() {
     lfs_data->config.lookahead_size = 16;
 
     return lfs_data;
-};
+}
 
 // Returns true if fingerprint was invalid and LFS reformatting is needed
 static bool storage_int_check_and_set_fingerprint(LFSData* lfs_data) {
@@ -189,7 +189,7 @@ static void storage_int_lfs_mount(LFSData* lfs_data, StorageData* storage) {
     lfs_t* lfs = &lfs_data->lfs;
 
     bool was_fingerprint_outdated = storage_int_check_and_set_fingerprint(lfs_data);
-    bool need_format = furi_hal_rtc_is_flag_set(FuriHalRtcFlagFactoryReset) ||
+    bool need_format = furi_hal_rtc_is_flag_set(FuriHalRtcFlagStorageFormatInternal) ||
                        was_fingerprint_outdated;
 
     if(need_format) {
@@ -197,7 +197,7 @@ static void storage_int_lfs_mount(LFSData* lfs_data, StorageData* storage) {
         err = lfs_format(lfs, &lfs_data->config);
         if(err == 0) {
             FURI_LOG_I(TAG, "Factory reset: Format successful, trying to mount");
-            furi_hal_rtc_reset_flag(FuriHalRtcFlagFactoryReset);
+            furi_hal_rtc_reset_flag(FuriHalRtcFlagStorageFormatInternal);
             err = lfs_mount(lfs, &lfs_data->config);
             if(err == 0) {
                 FURI_LOG_I(TAG, "Factory reset: Mounted");
@@ -455,6 +455,14 @@ static uint64_t storage_int_file_tell(void* ctx, File* file) {
     return position;
 }
 
+static bool storage_int_file_expand(void* ctx, File* file, const uint64_t size) {
+    UNUSED(ctx);
+    UNUSED(file);
+    UNUSED(size);
+    file->error_id = FSE_NOT_IMPLEMENTED;
+    return (file->error_id == FSE_OK);
+}
+
 static bool storage_int_file_truncate(void* ctx, File* file) {
     StorageData* storage = ctx;
     lfs_t* lfs = lfs_get_from_storage(storage);
@@ -656,6 +664,13 @@ static FS_Error storage_int_common_remove(void* ctx, const char* path) {
     return storage_int_parse_error(result);
 }
 
+static FS_Error storage_int_common_rename(void* ctx, const char* old, const char* new) {
+    StorageData* storage = ctx;
+    lfs_t* lfs = lfs_get_from_storage(storage);
+    int result = lfs_rename(lfs, old, new);
+    return storage_int_parse_error(result);
+}
+
 static FS_Error storage_int_common_mkdir(void* ctx, const char* path) {
     StorageData* storage = ctx;
     lfs_t* lfs = lfs_get_from_storage(storage);
@@ -686,6 +701,10 @@ static FS_Error storage_int_common_fs_info(
     return storage_int_parse_error(result);
 }
 
+static bool storage_int_common_equivalent_path(const char* path1, const char* path2) {
+    return strcmp(path1, path2) == 0;
+}
+
 /******************* Init Storage *******************/
 static const FS_Api fs_api = {
     .file =
@@ -696,6 +715,7 @@ static const FS_Api fs_api = {
             .write = storage_int_file_write,
             .seek = storage_int_file_seek,
             .tell = storage_int_file_tell,
+            .expand = storage_int_file_expand,
             .truncate = storage_int_file_truncate,
             .size = storage_int_file_size,
             .sync = storage_int_file_sync,
@@ -713,7 +733,9 @@ static const FS_Api fs_api = {
             .stat = storage_int_common_stat,
             .mkdir = storage_int_common_mkdir,
             .remove = storage_int_common_remove,
+            .rename = storage_int_common_rename,
             .fs_info = storage_int_common_fs_info,
+            .equivalent_path = storage_int_common_equivalent_path,
         },
 };
 

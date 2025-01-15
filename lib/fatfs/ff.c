@@ -1927,7 +1927,7 @@ DWORD xsum32 (
 
 static
 void get_xdir_info (
-	BYTE* dirb,			/* Pointer to the direcotry entry block 85+C0+C1s */
+	BYTE* dirb,			/* Pointer to the directory entry block 85+C0+C1s */
 	FILINFO* fno		/* Buffer to store the extracted file information */
 )
 {
@@ -1971,17 +1971,17 @@ void get_xdir_info (
 
 
 /*-----------------------------------*/
-/* exFAT: Get a directry entry block */
+/* exFAT: Get a directory entry block */
 /*-----------------------------------*/
 
 static
 FRESULT load_xdir (	/* FR_INT_ERR: invalid entry block */
-	DIR* dp			/* Pointer to the reading direcotry object pointing the 85 entry */
+	DIR* dp			/* Pointer to the reading directory object pointing the 85 entry */
 )
 {
 	FRESULT res;
 	UINT i, sz_ent;
-	BYTE* dirb = dp->obj.fs->dirbuf;	/* Pointer to the on-memory direcotry entry block 85+C0+C1s */
+	BYTE* dirb = dp->obj.fs->dirbuf;	/* Pointer to the on-memory directory entry block 85+C0+C1s */
 
 
 	/* Load 85 entry */
@@ -2026,7 +2026,7 @@ FRESULT load_xdir (	/* FR_INT_ERR: invalid entry block */
 /*------------------------------------------------*/
 static
 FRESULT load_obj_dir (
-	DIR* dp,			/* Blank directory object to be used to access containing direcotry */
+	DIR* dp,			/* Blank directory object to be used to access containing directory */
 	const _FDID* obj	/* Object with its containing directory information */
 )
 {
@@ -2054,12 +2054,12 @@ FRESULT load_obj_dir (
 /*-----------------------------------------------*/
 static
 FRESULT store_xdir (
-	DIR* dp				/* Pointer to the direcotry object */
+	DIR* dp				/* Pointer to the directory object */
 )
 {
 	FRESULT res;
 	UINT nent;
-	BYTE* dirb = dp->obj.fs->dirbuf;	/* Pointer to the direcotry entry block 85+C0+C1s */
+	BYTE* dirb = dp->obj.fs->dirbuf;	/* Pointer to the directory entry block 85+C0+C1s */
 
 	/* Create set sum */
 	st_word(dirb + XDIR_SetSum, xdir_sum(dirb));
@@ -2087,7 +2087,7 @@ FRESULT store_xdir (
 
 static
 void create_xdir (
-	BYTE* dirb,			/* Pointer to the direcotry entry block buffer */
+	BYTE* dirb,			/* Pointer to the directory entry block buffer */
 	const WCHAR* lfn	/* Pointer to the nul terminated file name */
 )
 {
@@ -3060,7 +3060,7 @@ FRESULT find_volume (	/* FR_OK(0): successful, !=0: any error occurred */
 			fmt = bsect ? check_fs(fs, bsect) : 3;	/* Check the partition */
 		} while (LD2PT(vol) == 0 && fmt >= 2 && ++i < 4);
 	}
-	if (fmt == 4) return FR_DISK_ERR;		/* An error occured in the disk I/O layer */
+	if (fmt == 4) return FR_DISK_ERR;		/* An error occurred in the disk I/O layer */
 	if (fmt >= 2) return FR_NO_FILESYSTEM;	/* No FAT volume is found */
 
 	/* An FAT volume is found (bsect). Following code initializes the file system object */
@@ -5297,6 +5297,7 @@ FRESULT f_forward (
 /*-----------------------------------------------------------------------*/
 /* Create an FAT/exFAT volume                                            */
 /*-----------------------------------------------------------------------*/
+#define _MKFS_ONLY_EXFAT
 
 FRESULT f_mkfs (
 	const TCHAR* path,	/* Logical drive number */
@@ -5369,9 +5370,19 @@ FRESULT f_mkfs (
 	if (sz_vol < 128) return FR_MKFS_ABORTED;	/* Check if volume size is >=128s */
 
 	/* Pre-determine the FAT type */
+#ifdef _MKFS_ONLY_EXFAT
+	(void)sz_dir;
+	(void)sz_rsv;
+	(void)pau;
+	(void)cst32;
+	(void)cst;
+	(void)n_rootdir;
+	(void)n_fats;
+	fmt = FS_EXFAT;
+#else
 	do {
 		if (_FS_EXFAT && (opt & FM_EXFAT)) {	/* exFAT possible? */
-			if ((opt & FM_ANY) == FM_EXFAT || sz_vol >= 0x4000000 || au > 128) {	/* exFAT only, vol >= 64Ms or au > 128s ? */
+			if ((opt & FM_ANY) == FM_EXFAT || sz_vol >= 0x2000000 || au > 128) {	/* exFAT only, vol >= 32Ms or au > 128s ? */
 				fmt = FS_EXFAT; break;
 			}
 		}
@@ -5384,6 +5395,7 @@ FRESULT f_mkfs (
 		if (!(opt & FM_FAT)) return FR_INVALID_PARAMETER;	/* no-FAT? */
 		fmt = FS_FAT16;
 	} while (0);
+#endif
 
 #if _FS_EXFAT
 	if (fmt == FS_EXFAT) {	/* Create an exFAT volume */
@@ -5548,6 +5560,11 @@ FRESULT f_mkfs (
 
 	} else
 #endif	/* _FS_EXFAT */
+#ifdef _MKFS_ONLY_EXFAT
+	{
+		return FR_INVALID_PARAMETER;
+	}
+#else
 	{	/* Create an FAT12/16/32 volume */
 		do {
 			pau = au;
@@ -5701,8 +5718,12 @@ FRESULT f_mkfs (
 			sect += n; nsect -= n;
 		} while (nsect);
 	}
+#endif
 
 	/* Determine system ID in the partition table */
+#ifdef _MKFS_ONLY_EXFAT
+	sys = 0x07;			/* HPFS/NTFS/exFAT */
+#else
 	if (_FS_EXFAT && fmt == FS_EXFAT) {
 		sys = 0x07;			/* HPFS/NTFS/exFAT */
 	} else {
@@ -5716,6 +5737,7 @@ FRESULT f_mkfs (
 			}
 		}
 	}
+#endif
 
 	/* Update partition information */
 	if (_MULTI_PARTITION && part != 0) {	/* Created in the existing partition */

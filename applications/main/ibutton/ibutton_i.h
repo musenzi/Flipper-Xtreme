@@ -7,8 +7,8 @@
 #include <gui/scene_manager.h>
 #include <gui/view_dispatcher.h>
 
-#include <one_wire/ibutton/ibutton_worker.h>
-#include <one_wire/ibutton/ibutton_protocols.h>
+#include <ibutton/ibutton_worker.h>
+#include <ibutton/ibutton_protocols.h>
 
 #include <rpc/rpc_app.h>
 #include <storage/storage.h>
@@ -29,9 +29,10 @@
 #include "scenes/ibutton_scene.h"
 
 #define IBUTTON_APP_FOLDER ANY_PATH("ibutton")
-#define IBUTTON_APP_EXTENSION ".ibtn"
+#define IBUTTON_APP_FILENAME_PREFIX "iBtn"
+#define IBUTTON_APP_FILENAME_EXTENSION ".ibtn"
 
-#define IBUTTON_KEY_NAME_SIZE 22
+#define IBUTTON_KEY_NAME_SIZE 29
 
 typedef enum {
     iButtonWriteModeInvalid,
@@ -89,7 +90,7 @@ typedef enum {
 } iButtonNotificationMessage;
 
 bool ibutton_select_and_load_key(iButton* ibutton);
-bool ibutton_load_key(iButton* ibutton);
+bool ibutton_load_key(iButton* ibutton, bool show_error);
 bool ibutton_save_key(iButton* ibutton);
 bool ibutton_delete_key(iButton* ibutton);
 void ibutton_reset_key(iButton* ibutton);

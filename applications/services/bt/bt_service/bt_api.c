@@ -1,29 +1,45 @@
 #include "bt_i.h"
+#include <profiles/serial_profile.h>
 
-bool bt_set_profile(Bt* bt, BtProfile profile) {
+FuriHalBleProfileBase* bt_profile_start(
+    Bt* bt,
+    const FuriHalBleProfileTemplate* profile_template,
+    FuriHalBleProfileParams params) {
     furi_assert(bt);
 
     // Send message
-    bool result = false;
+    FuriHalBleProfileBase* profile_instance = NULL;
+
     BtMessage message = {
-        .type = BtMessageTypeSetProfile, .data.profile = profile, .result = &result};
+        .lock = api_lock_alloc_locked(),
+        .type = BtMessageTypeSetProfile,
+        .profile_instance = &profile_instance,
+        .data.profile.params = params,
+        .data.profile.template = profile_template,
+    };
     furi_check(
         furi_message_queue_put(bt->message_queue, &message, FuriWaitForever) == FuriStatusOk);
     // Wait for unlock
-    furi_event_flag_wait(bt->api_event, BT_API_UNLOCK_EVENT, FuriFlagWaitAny, FuriWaitForever);
+    api_lock_wait_unlock_and_free(message.lock);
 
-    return result;
+    bt->current_profile = profile_instance;
+    return profile_instance;
+}
+
+bool bt_profile_restore_default(Bt* bt) {
+    bt->current_profile = bt_profile_start(bt, ble_profile_serial, NULL);
+    return bt->current_profile != NULL;
 }
 
 void bt_disconnect(Bt* bt) {
     furi_assert(bt);
 
     // Send message
-    BtMessage message = {.type = BtMessageTypeDisconnect};
+    BtMessage message = {.lock = api_lock_alloc_locked(), .type = BtMessageTypeDisconnect};
     furi_check(
         furi_message_queue_put(bt->message_queue, &message, FuriWaitForever) == FuriStatusOk);
     // Wait for unlock
-    furi_event_flag_wait(bt->api_event, BT_API_UNLOCK_EVENT, FuriFlagWaitAny, FuriWaitForever);
+    api_lock_wait_unlock_and_free(message.lock);
 }
 
 void bt_set_status_changed_callback(Bt* bt, BtStatusChangedCallback callback, void* context) {

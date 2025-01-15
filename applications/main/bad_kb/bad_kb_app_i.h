@@ -2,49 +2,50 @@
 
 #include "bad_kb_app.h"
 #include "scenes/bad_kb_scene.h"
-#include "bad_kb_script.h"
+#include "helpers/ducky_script.h"
+#include "helpers/ble_hid.h"
+#include "bad_kb_paths.h"
 
 #include <gui/gui.h>
 #include <assets_icons.h>
 #include <gui/view_dispatcher.h>
 #include <gui/scene_manager.h>
+#include <gui/modules/submenu.h>
 #include <dialogs/dialogs.h>
 #include <notification/notification_messages.h>
 #include <gui/modules/variable_item_list.h>
-#include <gui/modules/widget.h>
 #include <gui/modules/text_input.h>
 #include <gui/modules/byte_input.h>
+#include <gui/modules/loading.h>
+#include <gui/modules/widget.h>
 #include "views/bad_kb_view.h"
+#include <furi_hal_usb.h>
 
-#define BAD_KB_APP_BASE_FOLDER EXT_PATH("badkb")
-#define BAD_KB_APP_PATH_LAYOUT_FOLDER BAD_KB_APP_BASE_FOLDER "/assets/layouts"
-#define BAD_KB_APP_PATH_BOUND_KEYS_FOLDER EXT_PATH("badkb/.bt_keys")
-#define BAD_KB_APP_PATH_BOUND_KEYS_FILE BAD_KB_APP_PATH_BOUND_KEYS_FOLDER "/.devices.keys"
 #define BAD_KB_APP_SCRIPT_EXTENSION ".txt"
 #define BAD_KB_APP_LAYOUT_EXTENSION ".kl"
 
-#define BAD_KB_MAC_ADDRESS_LEN 6 // need replace with MAC size maccro
-#define BAD_KB_ADV_NAME_MAX_LEN 18
-
-// this is the MAC address used when we do not forget paired device (BOUND STATE)
-#define BAD_KB_BOUND_MAC_ADDRESS {0x41, 0x4a, 0xef, 0xb6, 0xa9, 0xd4};
-
-typedef enum {
-    BadKbAppErrorNoFiles,
-    BadKbAppErrorCloseRpc,
-} BadKbAppError;
+extern uint8_t BAD_KB_BOUND_MAC[GAP_MAC_ADDR_SIZE]; // For remember mode
 
 typedef enum BadKbCustomEvent {
-    BadKbAppCustomEventTextEditResult,
+    BadKbAppCustomEventTextInputDone,
     BadKbAppCustomEventByteInputDone,
     BadKbCustomEventErrorBack
 } BadKbCustomEvent;
 
+typedef enum {
+    BadKbAppErrorNoFiles,
+} BadKbAppError;
+
 typedef struct {
-    //uint8_t bounded_mac[BAD_KB_MAC_ADDRESS_LEN];
-    uint8_t mac[BAD_KB_MAC_ADDRESS_LEN];
-    char name[BAD_KB_ADV_NAME_MAX_LEN + 1];
-} BadKbBtConfig;
+    BleProfileHidParams ble;
+    FuriHalUsbHidConfig usb;
+} BadKbConfig;
+
+typedef enum {
+    BadKbConnModeNone,
+    BadKbConnModeUsb,
+    BadKbConnModeBt,
+} BadKbConnMode;
 
 struct BadKbApp {
     Gui* gui;
@@ -53,16 +54,15 @@ struct BadKbApp {
     NotificationApp* notifications;
     DialogsApp* dialogs;
     Widget* widget;
-    VariableItemList* var_item_list_bt;
-    VariableItemList* var_item_list_usb;
-
-    Bt* bt;
+    VariableItemList* var_item_list;
     TextInput* text_input;
     ByteInput* byte_input;
-    uint8_t mac[BAD_KB_MAC_ADDRESS_LEN];
-    char name[BAD_KB_ADV_NAME_MAX_LEN + 1];
-    bool bt_remember; // weither we remember paired devices or not
-    BadKbBtConfig bt_old_config;
+    Loading* loading;
+
+    char bt_name_buf[FURI_HAL_BT_ADV_NAME_LENGTH];
+    uint8_t bt_mac_buf[GAP_MAC_ADDR_SIZE];
+    char usb_name_buf[HID_MANUF_PRODUCT_NAME_LEN];
+    uint16_t usb_vidpid_buf[2];
 
     BadKbAppError error;
     FuriString* file_path;
@@ -70,19 +70,44 @@ struct BadKbApp {
     BadKb* bad_kb_view;
     BadKbScript* bad_kb_script;
 
+    Bt* bt;
     bool is_bt;
+    bool bt_remember;
+    BadKbConfig config; // User options
+    BadKbConfig id_config; // ID and BT_ID values
 
-    FuriHalUsbInterface* usb_prev_mode;
-    GapPairing bt_prev_mode;
+    bool set_bt_id;
+    bool set_usb_id;
+    bool has_bt_id;
+    bool has_usb_id;
 
+    FuriHalBleProfileBase* ble_hid;
+    FuriHalUsbInterface* prev_usb_mode;
+
+    BleProfileHidParams cur_ble_cfg;
+    FuriHalUsbHidConfig* cur_usb_cfg;
+
+    BadKbConnMode conn_mode;
     FuriThread* conn_init_thread;
 };
 
 typedef enum {
-    BadKbAppViewError,
+    BadKbAppViewWidget,
     BadKbAppViewWork,
-    BadKbAppViewConfigBt,
-    BadKbAppViewConfigUsb,
-    BadKbAppViewConfigMac,
-    BadKbAppViewConfigName
+    BadKbAppViewVarItemList,
+    BadKbAppViewByteInput,
+    BadKbAppViewTextInput,
+    BadKbAppViewLoading,
 } BadKbAppView;
+
+void bad_kb_app_show_loading_popup(BadKbApp* app, bool show);
+
+int32_t bad_kb_conn_apply(BadKbApp* app);
+
+void bad_kb_conn_reset(BadKbApp* app);
+
+void bad_kb_config_refresh(BadKbApp* app);
+
+void bad_kb_config_adjust(BadKbConfig* cfg);
+
+void bad_kb_load_settings(BadKbApp* app);

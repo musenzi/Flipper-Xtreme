@@ -39,14 +39,14 @@ void bt_settings_scene_start_on_enter(void* context) {
     VariableItemList* var_item_list = app->var_item_list;
     VariableItem* item;
 
-    if(furi_hal_bt_is_ble_gatt_gap_supported()) {
+    if(furi_hal_bt_is_gatt_gap_supported()) {
         item = variable_item_list_add(
             var_item_list,
             "Bluetooth",
             BtSettingNum,
             bt_settings_scene_start_var_list_change_callback,
             app);
-        if(app->settings.enabled) {
+        if(app->bt->bt_settings.enabled) {
             variable_item_set_current_value_index(item, BtSettingOn);
             variable_item_set_current_value_text(item, bt_settings_text[BtSettingOn]);
         } else {
@@ -71,10 +71,10 @@ bool bt_settings_scene_start_on_event(void* context, SceneManagerEvent event) {
     if(event.type == SceneManagerEventTypeCustom) {
         if(event.event == BtSettingOn) {
             furi_hal_bt_start_advertising();
-            app->settings.enabled = true;
+            app->bt->bt_settings.enabled = true;
             consumed = true;
         } else if(event.event == BtSettingOff) {
-            app->settings.enabled = false;
+            app->bt->bt_settings.enabled = false;
             furi_hal_bt_stop_advertising();
             consumed = true;
         } else if(event.event == BtSettingsCustomEventForgetDevices) {

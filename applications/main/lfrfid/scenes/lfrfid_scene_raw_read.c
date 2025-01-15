@@ -1,5 +1,4 @@
 #include "../lfrfid_i.h"
-#include "xtreme/assets.h"
 
 #define RAW_READ_TIME 5000
 
@@ -33,7 +32,7 @@ void lfrfid_scene_raw_read_on_enter(void* context) {
     LfRfidReadRawState* state = malloc(sizeof(LfRfidReadRawState));
     scene_manager_set_scene_state(app->scene_manager, LfRfidSceneRawRead, (uint32_t)state);
     state->string_file_name = furi_string_alloc();
-    popup_set_icon(popup, 0, 3, XTREME_ASSETS()->I_RFIDDolphinReceive_97x61);
+    popup_set_icon(popup, 0, 3, &I_RFIDDolphinReceive_97x61);
     view_dispatcher_switch_to_view(app->view_dispatcher, LfRfidViewPopup);
     lfrfid_worker_start_thread(app->lfworker);
     lfrfid_make_app_folder(app);
@@ -88,6 +87,8 @@ bool lfrfid_scene_raw_read_on_event(void* context, SceneManagerEvent event) {
                         popup, "Reading\nRAW RFID\nPSK", 89, 30, AlignCenter, AlignTop);
                     notification_message(app->notifications, &sequence_blink_start_yellow);
                     lfrfid_worker_stop(app->lfworker);
+                    lfrfid_worker_stop_thread(app->lfworker);
+                    lfrfid_worker_start_thread(app->lfworker);
                     furi_string_printf(
                         state->string_file_name,
                         "%s/%s%s",

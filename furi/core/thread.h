@@ -8,6 +8,9 @@
 #include "base.h"
 #include "common_defines.h"
 
+#include <stdint.h>
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,7 +31,8 @@ typedef enum {
     FuriThreadPriorityNormal = 16, /**< Normal */
     FuriThreadPriorityHigh = 17, /**< High */
     FuriThreadPriorityHighest = 18, /**< Highest */
-    FuriThreadPriorityIsr = 32, /**< Deffered Isr (highest possible) */
+    FuriThreadPriorityIsr =
+        (FURI_CONFIG_THREAD_MAX_PRIORITIES - 1), /**< Deferred ISR (highest possible) */
 } FuriThreadPriority;
 
 /** FuriThread anonymous structure */
@@ -75,6 +79,8 @@ FuriThread* furi_thread_alloc_ex(
     void* context);
 
 /** Release FuriThread
+ *
+ * @warning    see furi_thread_join
  *
  * @param      thread  FuriThread instance
  */
@@ -132,6 +138,13 @@ void furi_thread_set_context(FuriThread* thread, void* context);
  */
 void furi_thread_set_priority(FuriThread* thread, FuriThreadPriority priority);
 
+/** Get FuriThread priority
+ *
+ * @param      thread   FuriThread instance
+ * @return     FuriThreadPriority value
+ */
+FuriThreadPriority furi_thread_get_priority(FuriThread* thread);
+
 /** Set current thread priority
  *
  * @param      priority FuriThreadPriority value
@@ -173,6 +186,9 @@ FuriThreadState furi_thread_get_state(FuriThread* thread);
 void furi_thread_start(FuriThread* thread);
 
 /** Join FuriThread
+ *
+ * @warning    Use this method only when CPU is not busy(Idle task receives
+ *             control), otherwise it will wait forever.
  *
  * @param      thread  FuriThread instance
  *
@@ -220,15 +236,13 @@ int32_t furi_thread_get_return_code(FuriThread* thread);
 
 /** Get FreeRTOS FuriThreadId for current thread
  *
- * @param      thread  FuriThread instance
- *
  * @return     FuriThreadId or NULL
  */
 FuriThreadId furi_thread_get_current_id();
 
 /** Get FuriThread instance for current thread
  * 
- * @return FuriThread* 
+ * @return pointer to FuriThread or NULL if this thread doesn't belongs to Furi
  */
 FuriThread* furi_thread_get_current();
 
@@ -247,10 +261,10 @@ uint32_t furi_thread_flags_wait(uint32_t flags, uint32_t options, uint32_t timeo
  * @brief Enumerate threads
  * 
  * @param thread_array array of FuriThreadId, where thread ids will be stored
- * @param array_items array size
+ * @param array_item_count array size
  * @return uint32_t threads count
  */
-uint32_t furi_thread_enumerate(FuriThreadId* thread_array, uint32_t array_items);
+uint32_t furi_thread_enumerate(FuriThreadId* thread_array, uint32_t array_item_count);
 
 /**
  * @brief Get thread name
@@ -283,12 +297,10 @@ uint32_t furi_thread_get_stack_space(FuriThreadId thread_id);
 FuriThreadStdoutWriteCallback furi_thread_get_stdout_callback();
 
 /** Set STDOUT callback for thread
- * 
+ *
  * @param      callback  callback or NULL to clear
- * 
- * @return     true on success, otherwise fail
  */
-bool furi_thread_set_stdout_callback(FuriThreadStdoutWriteCallback callback);
+void furi_thread_set_stdout_callback(FuriThreadStdoutWriteCallback callback);
 
 /** Write data to buffered STDOUT
  * 
